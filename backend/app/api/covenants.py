@@ -13,7 +13,10 @@ from app.services.url_preview import SSRFBlockedError, fetch_preview
 
 router = APIRouter(prefix="/covenants", tags=["covenants"])
 settings = get_settings()
-limiter = Limiter(key_func=get_remote_address)
+# Same Redis-backed storage_uri as app.main.limiter -- shares the backing
+# store so per-address limits stay consistent across instances (slowapi
+# limiter instances are per-module here, but they must agree on storage).
+limiter = Limiter(key_func=get_remote_address, storage_uri=settings.REDIS_URL)
 
 
 @router.get("/{covenant_id}", response_model=CovenantOut)

@@ -49,6 +49,18 @@ class Settings(BaseSettings):
     INDEXER_POLL_INTERVAL_SECONDS: int = Field(default=8)
     INDEXER_ENABLED: bool = Field(default=True)
 
+    # --- Redis (distributed coordination: GenLayer RPC hourly budget +
+    # slowapi cross-instance rate limit storage). Production points this at
+    # a real Upstash TLS instance supplied out-of-band into backend/.env --
+    # NEVER commit a real rediss:// URL (see .env.example). ---
+    REDIS_URL: str = Field(default="redis://localhost:6379/0")
+    GENLAYER_RPC_HOURLY_BUDGET: int = Field(
+        default=4000,
+        description="Hard cap on outbound genlayer-py RPC calls per rolling UTC hour, "
+        "shared across all backend instances via Redis. Kept comfortably under "
+        "GenLayer's account-wide 5000/hour limit.",
+    )
+
     # --- CORS ---
     CORS_ALLOWED_ORIGINS: str = Field(
         default="http://localhost:3000",

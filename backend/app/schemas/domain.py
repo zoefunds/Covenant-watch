@@ -89,3 +89,4 @@ class HealthOut(BaseModel):
     database: str
     indexer: dict
     contract_configured: bool
+    rpc_budget: dict

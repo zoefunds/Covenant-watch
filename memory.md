@@ -489,3 +489,134 @@ curl localhost:8000/healthz
 # or, once Docker is available:
 docker compose up --build
 ```
+
+## Backend: Redis-backed GenLayer RPC budget + distributed rate limiting
+## (this session, 2026-09-21)
+
+GenLayer's RPC has an account/endpoint-wide limit of 5000 requests/hour.
+The backend previously made genlayer-py calls (indexer poll loop) with
+zero coordination against this — a real production risk given multiple
+Fly.io machines could run concurrently. A real, live Upstash Redis
+instance was provided for coordination (`REDIS_URL`, `rediss://` TLS,
+value lives only in `backend/.env`, confirmed gitignored via root
+`.gitignore` line 5 covering `.env` — never committed; see verification
+below).
+
+### What was built
+
+- **`app/services/rpc_budget.py`** (new): the shared hourly RPC budget
+  tracker. Fixed UTC-hour window key `genlayer:rpc_budget:<epoch_hour>` in
+  Redis, `INCR` (atomic) + `EXPIRE ... NX` (TTL set once, no reset race).
+  Capped at `GENLAYER_RPC_HOURLY_BUDGET` (new config field, default 4000,
+  under GenLayer's 5000/hour ceiling). Raises `RpcBudgetExhaustedError`
+  (carries `used`/`limit`/`retry_after_seconds`) when over budget. **Fails
+  open** on a Redis-layer outage (logs loudly, allows the call) rather
+  than taking the app down — GenLayer's own RPC still hard-rejects if the
+  real limit is exceeded.
+- **Single choke point**: `call_contract_view_budgeted()` in
+  `app/services/chain_client.py`, the deliberate parallel to the
+  contract's own `_send_gen` single choke point for fund movement (see
+  Escrow section above — same pattern, different domain: no genlayer-py
+  call happens without going through this function, the way no GEN moves
+  without going through `_send_gen`). Both `chain_client.read_contract_view`
+  (request-time live reads) and `app/workers/indexer.py::_call_view` (the
+  poll loop — previously called `client.read_contract` directly,
+  bypassing any coordination) now funnel through it.
+- **Graceful degradation**: indexer catches `RpcBudgetExhaustedError`
+  specifically in `indexer_loop`, logs a clear `warning`-level
+  `indexer.rpc_budget_exhausted_backing_off` message (not swallowed at
+  debug level), sets `_STATUS["state"] = "rate_budget_exhausted"`, and
+  sleeps until the actual window reset instead of the normal short poll
+  interval — never crashes, never busy-spins. Any request-time code path
+  that raises the same error is caught by a new global FastAPI exception
+  handler (`app/main.py`) returning a typed `503` with a `Retry-After`
+  header — not a generic 500 or a hang.
+- **slowapi upgraded to Redis-backed storage**: confirmed directly against
+  the installed `slowapi==0.1.9` / `limits==5.8.0` that `Limiter(...,
+  storage_uri=...)` is real, supported API (not guessed) and that `limits`
+  handles `rediss://` natively. All three `Limiter(...)` instantiations
+  (`app/main.py`, `app/api/auth.py`, `app/api/covenants.py`) now pass
+  `storage_uri=settings.REDIS_URL` so per-address limits are consistent
+  across Fly.io machines instead of each one keeping an independent
+  in-process counter.
+- **Observability**: `/healthz` extended with an `rpc_budget` field
+  (used/limit/remaining/window_reset_seconds/window_reset_at_epoch); same
+  data also available standalone at `GET /internal/rate-budget`.
+- **Config**: `REDIS_URL` (default `redis://localhost:6379/0` placeholder)
+  and `GENLAYER_RPC_HOURLY_BUDGET` (default `4000`) added to
+  `app/core/config.py` and `.env.example`, with `.env.example` explicitly
+  commenting that production uses a real Upstash `rediss://` URL supplied
+  out-of-band, never committed.
+- **docker-compose.yml**: added an optional local `redis:7-alpine` service
+  (no Upstash account needed for `docker compose up`) and overrides the
+  `backend` service's `REDIS_URL` to point at it by default; documented
+  the tradeoff (compose-local vs. real Upstash for local dev) in
+  `backend/README.md`.
+- **Dependencies**: `redis==5.2.1` + `limits[redis]==5.8.0` added to
+  `requirements.txt`; `fakeredis==2.38.0` added to `requirements-dev.txt`
+  for the new unit tests only.
+
+### How this was verified against REAL infrastructure (not just code review)
+
+1. Connected directly with `redis.from_url(REDIS_URL)` to the real Upstash
+   instance and confirmed `PING` → `True`, plus a real `SET`/`GET`
+   round-trip over `rediss://` TLS.
+2. Called `app.services.chain_client.read_contract_view("get_loan_count")`
+   directly against the live deployed contract
+   (`0x078485282E589a2cb43F6D3263753402045b7192`) — got a real `0` back
+   (correct, no loans on it yet) — and confirmed via a **separate, raw**
+   Redis client read (bypassing this project's own status-reporting code)
+   that key `genlayer:rpc_budget:<hour>` went from unset to `1` in the
+   live Upstash instance.
+3. Separately called `app.workers.indexer._call_view(...)` — the exact
+   function the indexer's `run_sync_once()` poll loop uses in
+   production — directly against the same live contract, and confirmed
+   the same Redis key incremented again (`1` → `2`). This specifically
+   exercises the indexer's code path, not just the request-time path.
+4. Started the real FastAPI app (`uvicorn`) locally with `REDIS_URL`
+   pointed at the live Upstash instance and confirmed `GET /healthz` and
+   `GET /internal/rate-budget` report the exact same numbers as the raw
+   Redis reads above.
+5. Hit `POST /auth/nonce` four times against the running app and confirmed
+   — via a raw Redis client, not by trusting HTTP status codes — a real
+   key `LIMITS:LIMITER/127.0.0.1//auth/nonce/10/1/minute` existed in the
+   live Upstash instance with value `4`, proving slowapi's Redis storage
+   is genuinely wired up (the 500s on that endpoint were an unrelated
+   pre-existing local Postgres auth misconfiguration on this sandbox's
+   port-5544 Docker Postgres — `fe_sendauth: no password supplied` — not
+   caused by this change; confirmed by reading the traceback, which fails
+   inside `db.execute`/session handling, after the rate limiter already
+   ran).
+6. `pytest tests/` → **15 passed** (the pre-existing 10 + 5 new
+   `tests/test_rpc_budget.py` tests using `fakeredis`, so the suite
+   doesn't have to hit real Upstash every run): normal increments,
+   `RpcBudgetExhaustedError` raised with a correct `retry_after_seconds`
+   once over budget, status reads never increment, fail-open behavior
+   under a simulated Redis outage, and — driving the real
+   `app.workers.indexer._call_view` function against a stub chain client
+   with the budget pre-filled — confirmation that the indexer's
+   graceful-degradation path actually triggers `RpcBudgetExhaustedError`
+   rather than silently succeeding or crashing.
+
+### Blocker noted (not this feature's fault, did not block delivery)
+
+Local Postgres in this sandbox (Docker, port 5544) requires a password
+this session does not have (`fe_sendauth: no password supplied`), which
+is why a full end-to-end `run_sync_once()` indexer pass (DB write step)
+could not be exercised live here — pre-existing to this session, unrelated
+to Redis/RPC-budget work. Worked around for verification purposes by
+calling the indexer's real `_call_view` chain-call function directly
+(item 3 above), which is the exact function `run_sync_once()` calls before
+ever touching the DB, so the RPC-budget wiring on the indexer's code path
+is still genuinely verified end-to-end.
+
+### Secret-handling confirmation
+
+`REDIS_URL`'s real `rediss://...@major-wahoo-290075.upstash.io:6379` value
+was written ONLY to `backend/.env` (confirmed `git status --porcelain`
+does not list it — root `.gitignore` line 5 covers `.env`/`.env.*`, `git
+check-ignore -v backend/.env` confirms the match). Ran `git diff -- backend/`
+and a repo-wide `grep -rl` for the credential fragment across every
+touched/new file (`app/`, `tests/`, `*.md`, `*.txt`, `*.yml`,
+`.env.example`) before considering this done — zero matches outside
+`backend/.env` itself.

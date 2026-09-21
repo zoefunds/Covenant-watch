@@ -14,7 +14,9 @@ from app.services import auth as auth_service
 router = APIRouter(prefix="/auth", tags=["auth"])
 log = get_logger(__name__)
 settings = get_settings()
-limiter = Limiter(key_func=get_remote_address)
+# Same Redis-backed storage_uri as app.main.limiter/app.api.covenants.limiter
+# so per-address limits are consistent across Fly.io machines.
+limiter = Limiter(key_func=get_remote_address, storage_uri=settings.REDIS_URL)
 
 
 @router.post("/nonce", response_model=NonceResponse)

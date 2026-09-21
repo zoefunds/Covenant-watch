@@ -36,7 +36,8 @@ from app.models.check import Check, CheckStatus
 from app.models.covenant import Covenant, SourceType
 from app.models.loan import Loan
 from app.models.sync_cursor import SyncCursor
-from app.services.chain_client import get_client
+from app.services.chain_client import call_contract_view_budgeted, get_client
+from app.services.rpc_budget import RpcBudgetExhaustedError
 
 log = get_logger(__name__)
 
@@ -64,8 +65,17 @@ class _RetryableChainError(Exception):
     reraise=True,
 )
 def _call_view(client, address: str, function_name: str, args: list | None = None):
+    """Routes through `call_contract_view_budgeted` -- the single shared
+    choke point (app/services/chain_client.py) that checks the Redis
+    hourly RPC budget before every genlayer-py call. `RpcBudgetExhaustedError`
+    is NOT retried here (retrying into an exhausted budget would just
+    hammer Redis and burn the budget check itself) -- it propagates
+    straight up to `run_sync_once`/`indexer_loop`, which back off for the
+    rest of the current hourly window instead of busy-spinning."""
     try:
-        return client.read_contract(address=address, function_name=function_name, args=args or [])
+        return call_contract_view_budgeted(client, address, function_name, args)
+    except RpcBudgetExhaustedError:
+        raise
     except _RetryableChainError:
         raise
     except Exception as e:  # noqa: BLE001 - treat all RPC failures as retryable
@@ -218,17 +228,33 @@ async def indexer_loop(stop_event: asyncio.Event) -> None:
 
         _STATUS["state"] = "syncing"
         _STATUS["last_run_at"] = dt.datetime.now(dt.timezone.utc).isoformat()
+        sleep_seconds = settings.INDEXER_POLL_INTERVAL_SECONDS
         try:
             run_sync_once()
             _STATUS["last_success_at"] = dt.datetime.now(dt.timezone.utc).isoformat()
             _STATUS["last_error"] = None
             _STATUS["state"] = "idle"
+        except RpcBudgetExhaustedError as e:
+            # Graceful degradation: never crash, never busy-spin against an
+            # already-exhausted budget. Log clearly at warning level (visible
+            # in normal deployments, not buried at debug) and sleep until the
+            # budget window actually resets instead of the usual short poll
+            # interval, then resume automatically.
+            _STATUS["state"] = "rate_budget_exhausted"
+            _STATUS["last_error"] = str(e)
+            log.warning(
+                "indexer.rpc_budget_exhausted_backing_off",
+                used=e.used,
+                limit=e.limit,
+                resuming_in_seconds=e.retry_after_seconds,
+            )
+            sleep_seconds = max(sleep_seconds, e.retry_after_seconds)
         except Exception as e:  # noqa: BLE001 - never let one bad pass kill the loop
             _STATUS["last_error"] = str(e)
             _STATUS["state"] = "error"
             log.error("indexer.sync_failed", error=str(e))
 
         try:
-            await asyncio.wait_for(stop_event.wait(), timeout=settings.INDEXER_POLL_INTERVAL_SECONDS)
+            await asyncio.wait_for(stop_event.wait(), timeout=sleep_seconds)
         except asyncio.TimeoutError:
             pass

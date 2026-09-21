@@ -22,6 +22,7 @@ from genlayer_py.chains import localnet, studionet, testnet_asimov, testnet_brad
 
 from app.core.config import get_settings
 from app.core.logging import get_logger
+from app.services.rpc_budget import check_and_increment_rpc_budget
 
 log = get_logger(__name__)
 
@@ -72,16 +73,36 @@ def get_client():
     return _client_singleton
 
 
+def call_contract_view_budgeted(
+    client: Any, address: str, function_name: str, args: Optional[list] = None
+) -> Any:
+    """THE single choke point for every outbound genlayer-py RPC call made
+    by this backend -- the indexer's poll loop and any request-time
+    passthrough read (`read_contract_view` below) both funnel through here.
+    Parallel to the contract's own `_send_gen` single choke point for fund
+    movement (see repo-root memory.md): just as no path moves GEN without
+    going through `_send_gen`, no path calls genlayer-py without going
+    through this function first. It checks-and-increments the shared Redis
+    hourly RPC budget (`app/services/rpc_budget.py`) before making the
+    call; a `RpcBudgetExhaustedError` propagates to the caller, which is
+    responsible for graceful degradation (indexer backoff, or a 503 for a
+    live endpoint -- see the global exception handler in app/main.py)."""
+    check_and_increment_rpc_budget(reason=f"{function_name}")
+    return client.read_contract(address=address, function_name=function_name, args=args or [])
+
+
 def read_contract_view(function_name: str, args: Optional[list] = None) -> Any:
     """Direct, uncached, live read against the deployed contract. Raises if
     CONTRACT_ADDRESS is not configured -- callers must handle that state
-    explicitly rather than receiving fabricated data."""
+    explicitly rather than receiving fabricated data. Goes through the
+    shared RPC budget choke point (`call_contract_view_budgeted`) -- can
+    raise `app.services.rpc_budget.RpcBudgetExhaustedError` if the hourly
+    GenLayer RPC budget is exhausted; see app/main.py's exception handler
+    for how that becomes a typed 503."""
     settings = get_settings()
     if not settings.CONTRACT_ADDRESS:
         raise RuntimeError("CONTRACT_ADDRESS is not configured")
     client = get_client()
-    return client.read_contract(
-        address=settings.CONTRACT_ADDRESS,
-        function_name=function_name,
-        args=args or [],
+    return call_contract_view_budgeted(
+        client, settings.CONTRACT_ADDRESS, function_name, args
     )

@@ -17,6 +17,21 @@ services:
       timeout: 5s
       retries: 10
 
+  # Optional local Redis for offline dev (no Upstash account needed to run
+  # `docker compose up`). Production/staging should instead point REDIS_URL
+  # (in backend/.env, never committed) at the real Upstash TLS instance --
+  # this container is dev-only and has no persistence/auth. See README.md
+  # "Local development" for the tradeoff.
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   migrate:
     build: .
     command: ["alembic", "upgrade", "head"]
@@ -37,8 +52,15 @@ services:
       - .env
     environment:
       DATABASE_URL: postgresql+psycopg://covenant:covenant@postgres:5432/covenant_watch
+      # Override REDIS_URL from .env with the compose-local redis service by
+      # default, unless you explicitly want this stack talking to real
+      # Upstash -- delete this line (and REDIS_URL stays whatever's in .env)
+      # if you want that instead.
+      REDIS_URL: redis://redis:6379/0
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
