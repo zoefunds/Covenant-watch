@@ -220,3 +220,21 @@ verified state, the following are **not yet built**:
 
 - Verified contract lint-clean, fixed and verified all direct-mode tests
   (26 passed / 1 documented skip), added `.gitignore`, wrote this file.
+
+## DEPLOYED CONTRACT ADDRESS (provided by user 2026-09-21)
+
+The user has deployed `contracts/covenant_watch.py` to GenLayer StudioNet
+themselves. The canonical deployed address is:
+
+```
+0x078485282E589a2cb43F6D3263753402045b7192
+```
+
+This MUST be wired into:
+- Backend env var `CONTRACT_ADDRESS` (backend `.env` / Fly secrets)
+- Frontend env var `NEXT_PUBLIC_CONTRACT_ADDRESS` (frontend `.env.local` / Vercel env)
+- `DEPLOYMENT.md`'s "wiring the deployed address" section, as the concrete
+  example value (not just a placeholder) once that section exists.
+
+Any in-progress backend/frontend/deployment-doc work should treat this as
+the real, live, canonical address for this project — not a placeholder.
