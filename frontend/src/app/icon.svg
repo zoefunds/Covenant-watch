@@ -1,7 +1,20 @@
 <svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="cwGlow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00F0FF" />
+      <stop offset="100%" stop-color="#3B82F6" />
+    </linearGradient>
+  </defs>
   <rect width="48" height="48" rx="10" fill="#051424"/>
-  <path d="M24 5 L41 14.5 V33.5 L24 43 L7 33.5 V14.5 Z" stroke="#00F0FF" stroke-width="2.2" fill="#0d1c2d"/>
-  <circle cx="24" cy="24" r="6" fill="#00F0FF"/>
-  <path d="M24 18.5 V15 M24 33 V29.5" stroke="#051424" stroke-width="1.6"/>
-  <circle cx="24" cy="24" r="2.2" fill="#051424"/>
+  <polygon points="24,5 42,13.5 42,32.5 24,44 6,32.5 6,13.5" stroke="url(#cwGlow)" stroke-width="1.8" fill="#0d1c2d"/>
+  <circle cx="24" cy="24" r="10.5" stroke="#2A364F" stroke-width="1" stroke-dasharray="2 1.6" />
+  <circle cx="24" cy="24" r="6.2" stroke="#00F0FF" stroke-width="1.2" />
+  <circle cx="24" cy="24" r="2.4" fill="#00F0FF" />
+  <circle cx="24" cy="13.5" r="1.4" fill="#3B82F6" />
+  <circle cx="33.1" cy="29.3" r="1.4" fill="#3B82F6" />
+  <circle cx="14.9" cy="29.3" r="1.4" fill="#3B82F6" />
+  <line x1="24" y1="9.6" x2="24" y2="11.5" stroke="#00F0FF" stroke-width="1" stroke-linecap="round" />
+  <line x1="24" y1="36.5" x2="24" y2="38.4" stroke="#00F0FF" stroke-width="1" stroke-linecap="round" />
+  <line x1="11.5" y1="24" x2="13.4" y2="24" stroke="#00F0FF" stroke-width="1" stroke-linecap="round" />
+  <line x1="34.6" y1="24" x2="36.5" y2="24" stroke="#00F0FF" stroke-width="1" stroke-linecap="round" />
 </svg>

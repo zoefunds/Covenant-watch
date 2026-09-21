@@ -9,7 +9,7 @@ import { useSigner } from "@/lib/useSigner";
 import { previewSource } from "@/lib/api";
 import { runTrackedWrite, TxSnapshot } from "@/lib/tx";
 import { createLoan, CovenantInput, VAGUE_CONDITION_FRAGMENTS, CHALLENGE_WINDOW_BOUNDS, MAX_COVENANTS_PER_LOAN } from "@/lib/contract";
-import { genToWei, formatDuration } from "@/lib/format";
+import { genToWei, formatDuration, formatBps } from "@/lib/format";
 
 type DraftCovenant = CovenantInput & { _previewLoading?: boolean; _previewBody?: string; _previewError?: string };
 
@@ -319,6 +319,28 @@ export default function NewLoanPage() {
             + Add covenant
           </Button>
         )}
+
+        <Card>
+          <h2 className="mb-3 text-sm font-semibold text-on-surface">Pre-deployment summary</h2>
+          <div className="grid grid-cols-2 gap-y-2 text-xs sm:grid-cols-4">
+            <div>
+              <p className="text-on-surface-variant">Principal</p>
+              <p className="font-onchain text-on-surface">{principalGen || "—"} GEN</p>
+            </div>
+            <div>
+              <p className="text-on-surface-variant">Required collateral</p>
+              <p className="font-onchain text-primary-container">{collateralGen || "—"} GEN</p>
+            </div>
+            <div>
+              <p className="text-on-surface-variant">Base interest</p>
+              <p className="font-onchain text-on-surface">{formatBps(interestBps)}</p>
+            </div>
+            <div>
+              <p className="text-on-surface-variant">Covenants pinned</p>
+              <p className="font-onchain text-on-surface">{covenants.length}</p>
+            </div>
+          </div>
+        </Card>
 
         {formError && <ErrorState title="Fix the form" body={formError} />}
         <TxStatusPanel snap={snap} />

@@ -97,6 +97,62 @@ export default function LandingPage() {
           </Card>
         </div>
       </section>
+
+      <section className="border-t border-outline-variant bg-surface-container-lowest">
+        <div className="mx-auto max-w-6xl px-4 py-14 sm:px-6">
+          <h2 className="mb-2 text-lg font-semibold text-on-surface">Why undercollateralized &amp; institutional lending breaks today</h2>
+          <p className="mb-8 max-w-2xl text-sm text-on-surface-variant">
+            Existing private credit and Web3 loans rely on delayed self-reports or brute-force liquidation oracles.
+            Covenant Watch replaces manual blind spots with independent, validator-run verification.
+          </p>
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            <Card>
+              <div className="mb-3 flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-on-surface">Traditional &amp; early DeFi credit</h3>
+                <span className="rounded bg-error-container px-2 py-0.5 font-onchain text-[10px] uppercase text-error">
+                  Status quo
+                </span>
+              </div>
+              <ul className="space-y-3 text-sm text-on-surface-variant">
+                <li>
+                  <span className="font-medium text-on-surface">Self-reported honor system —</span> borrowers submit
+                  self-attested reports; lenders discover breaches only after the fact.
+                </li>
+                <li>
+                  <span className="font-medium text-on-surface">Post-hoc disputes —</span> a breach means slow,
+                  expensive off-chain arbitration or litigation.
+                </li>
+                <li>
+                  <span className="font-medium text-on-surface">All-or-nothing liquidations —</span> price oracles
+                  can&apos;t read governance signers, pause switches, or off-chain reserve data.
+                </li>
+              </ul>
+            </Card>
+            <Card>
+              <div className="mb-3 flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-primary-container">Covenant Watch on GenLayer</h3>
+                <span className="rounded bg-tertiary-container px-2 py-0.5 font-onchain text-[10px] uppercase text-on-tertiary-container">
+                  This protocol
+                </span>
+              </div>
+              <ul className="space-y-3 text-sm text-on-surface-variant">
+                <li>
+                  <span className="font-medium text-on-surface">Precommitted public ground truth —</span> sources,
+                  fields, and thresholds are locked at origination and never substituted at check time.
+                </li>
+                <li>
+                  <span className="font-medium text-on-surface">Independent multi-validator inspection —</span> no
+                  borrower self-reports; validators pull raw evidence themselves.
+                </li>
+                <li>
+                  <span className="font-medium text-on-surface">Graduated consequences —</span> interest step-up,
+                  then partial seizure, then default — never a single abrupt liquidation.
+                </li>
+              </ul>
+            </Card>
+          </div>
+        </div>
+      </section>
     </div>
   );
 }

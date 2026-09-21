@@ -797,6 +797,69 @@ faked functionality).
   prototype that didn't exist here. The emblem/logo (`src/components/
   Emblem.tsx`, `src/app/icon.svg`) is an original hexagonal-seal SVG design
   in the Obsidian Assurance palette, not extracted from a prototype file.
+  **CORRECTED in a later session (see "Correction pass" below): the files
+  actually exist at `/Users/macbook/Documents/stitch_dark_theme_project_design/`
+  — wrong search directory, not a missing-file problem.**
+
+### Correction pass: prototypes found at the correct path (2026-09-21, later session)
+
+The 6 prototype HTML files (plus `DESIGN.md`) actually live at
+`/Users/macbook/Documents/stitch_dark_theme_project_design/`, not
+`/Users/macbook/Downloads` as the earlier session searched. Read all 6 in
+full this pass and reconciled the built frontend against their
+information architecture (content/structure/fields — not their raw
+markup or exact colors; `DESIGN.md`'s tokens, already implemented,
+remained authoritative for visual styling). Net changes:
+
+- **Emblem/logo/favicon — the one substantive fix.** `covenant_watch_emblem.html`
+  turned out to be a real, self-contained SVG (hexagon shield, concentric
+  "watch iris" rings, 3 satellite validator nodes, reticle crossbars) —
+  not just a described graphic. `src/components/Emblem.tsx` and
+  `src/app/icon.svg` were rebuilt to faithfully match that geometry
+  (recolored onto the existing Obsidian Assurance tokens, not copied
+  byte-for-byte), replacing the earlier session's invented hexagonal-seal
+  design. `src/app/favicon.ico` (16/32px) and a new
+  `src/app/apple-icon.png` (180px) were regenerated from the new
+  `icon.svg` via `rsvg-convert`/`imagemagick` so all three logo surfaces
+  (in-app header, browser tab, iOS home screen) are now actually derived
+  from the same prototype-sourced mark.
+- **Landing page (`src/app/page.tsx`):** added the "why undercollateralized
+  lending breaks today" old-world-vs-Covenant-Watch comparison section
+  from `covenant_watch_protocol_landing_page.html`'s Section 2 — this was
+  genuinely absent (the built page only had the core-loop steps + 3
+  feature cards). Kept the existing hero, core loop, and feature cards as-is
+  since they already covered the prototype's other key IA.
+  `originate_loan_covenants.html`'s hero-terminal telemetry mock, KPI
+  ribbon, and code-sample sections were judged marketing flourish on top
+  of already-covered ground and left out to avoid bloating a page that's
+  meant to stay lean and real-data-driven.
+- **Loans list (`src/app/loans/page.tsx`):** added a small real-data KPI
+  row (total escrowed, loan count, in-grace count, breached count — all
+  computed client-side from the already-fetched `loans` array, no new
+  API calls) and status filter tabs (All/Compliant/Grace/Breach, bucketed
+  from the real `loan.status` enum), matching
+  `active_credit_lines_covenant_health.html`'s KPI ribbon + filter bar
+  IA that the built page was missing entirely.
+- **Loan origination (`src/app/loans/new/page.tsx`):** added a
+  "Pre-deployment summary" card (principal, collateral, interest, covenant
+  count — all read from existing form state, nothing new fetched) before
+  the submit button, matching `originate_loan_covenants.html`'s
+  "Pre-Deployment State" review panel IA. The rest of the origination
+  flow (counterparty, per-covenant source/threshold/tier fields, vague-
+  condition rejection, challenge window) already matched the prototype's
+  covenant-builder structure field-for-field and was left alone.
+- **Left unchanged after review:** `loans/[id]/page.tsx` (loan detail),
+  the covenant check page (already has `SnapshotHash` + `ConsensusMeter`
+  + observed-value + challenge-window content matching
+  `covenant_check_verification.html`'s pinned-source/consensus/consequence
+  structure), and the challenge/dispute page (already additive-only
+  evidence form matching `dispute_challenge_portal.html`'s core IA — its
+  evidence-type tabs and historical-disputes-archive table were skipped
+  since the real contract's `submit_challenge_evidence` only accepts a
+  URL + note, and there's no backend endpoint for a global disputes
+  archive; adding either would mean fake, unwired UI).
+- `npm run build` and `npm run lint` both verified passing after these
+  changes.
 
 ### Exact local-dev commands
 

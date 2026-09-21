@@ -14,6 +14,7 @@ export default function LoansPage() {
   const [loans, setLoans] = useState<any[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<"all" | "mine">("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | "compliant" | "grace" | "breach">("all");
 
   useEffect(() => {
     setLoans(null);
@@ -38,6 +39,23 @@ export default function LoansPage() {
       }
     })();
   }, [filter, sessionAddress]);
+
+  function statusBucket(status: string): "compliant" | "grace" | "breach" {
+    if (status === "BREACH_TIER1" || status === "BREACH_TIER2" || status === "DEFAULTED") return "breach";
+    if (status === "CHALLENGE_ACTIVE") return "grace";
+    return "compliant";
+  }
+
+  const visibleLoans = loans?.filter((l) => statusFilter === "all" || statusBucket(l.status) === statusFilter) ?? null;
+  const counts = loans
+    ? {
+        all: loans.length,
+        compliant: loans.filter((l) => statusBucket(l.status) === "compliant").length,
+        grace: loans.filter((l) => statusBucket(l.status) === "grace").length,
+        breach: loans.filter((l) => statusBucket(l.status) === "breach").length,
+        escrowed: loans.reduce((sum, l) => sum + Number(l.collateral_deposited ?? 0), 0),
+      }
+    : null;
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
@@ -69,6 +87,43 @@ export default function LoansPage() {
         </div>
       </div>
 
+      {counts && (
+        <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <Card className="!p-3">
+            <p className="font-onchain text-[10px] uppercase text-on-surface-variant">Total escrowed</p>
+            <p className="mt-1 text-lg font-semibold text-on-surface">{formatGen(counts.escrowed)}</p>
+          </Card>
+          <Card className="!p-3">
+            <p className="font-onchain text-[10px] uppercase text-on-surface-variant">Loans</p>
+            <p className="mt-1 text-lg font-semibold text-on-surface">{counts.all}</p>
+          </Card>
+          <Card className="!p-3">
+            <p className="font-onchain text-[10px] uppercase text-on-surface-variant">In grace / challenge</p>
+            <p className="mt-1 text-lg font-semibold text-secondary">{counts.grace}</p>
+          </Card>
+          <Card className="!p-3">
+            <p className="font-onchain text-[10px] uppercase text-on-surface-variant">Breached</p>
+            <p className="mt-1 text-lg font-semibold text-error">{counts.breach}</p>
+          </Card>
+        </div>
+      )}
+
+      {loans && loans.length > 0 && (
+        <div className="mb-4 flex flex-wrap items-center gap-2 text-xs">
+          {(["all", "compliant", "grace", "breach"] as const).map((b) => (
+            <button
+              key={b}
+              onClick={() => setStatusFilter(b)}
+              className={`rounded px-3 py-1.5 capitalize ${
+                statusFilter === b ? "bg-surface-container-high text-on-surface" : "bg-surface-container text-on-surface-variant"
+              }`}
+            >
+              {b} {counts ? `(${b === "all" ? counts.all : counts[b]})` : ""}
+            </button>
+          ))}
+        </div>
+      )}
+
       {loans === null && !error && <LoadingState label="Loading loans…" />}
       {error && <ErrorState body={error} />}
       {loans && loans.length === 0 && (
@@ -78,9 +133,9 @@ export default function LoansPage() {
           action={<Button href="/loans/new">Originate the first loan</Button>}
         />
       )}
-      {loans && loans.length > 0 && (
+      {visibleLoans && visibleLoans.length > 0 && (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          {loans.map((loan) => (
+          {visibleLoans.map((loan) => (
             <Link key={loan.chain_loan_id} href={`/loans/${loan.chain_loan_id}`}>
               <Card className="h-full transition-colors hover:border-primary-container/50">
                 <div className="flex items-start justify-between">
