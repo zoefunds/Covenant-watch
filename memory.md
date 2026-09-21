@@ -320,9 +320,6 @@ source, no mock/simulated integration).
 
 ## Pending (not completed this session)
 
-- Frontend (`frontend/` still empty — Next.js/Tailwind/genlayer-js/
-  Obsidian Assurance design system not started). `DEPLOYMENT.md` §4 is an
-  explicit placeholder pending this.
 - Integration tests could not be confirmed PASSING in this sandbox (see
   above) — they are real, complete, and will run once pointed at an
   environment without the specific `glsim` build's payable-forwarding gap
@@ -330,6 +327,10 @@ source, no mock/simulated integration).
   re-attempt fixing glsim's internals from within this repo — it is an
   external package version issue, not something this project's code can
   paper over without faking results.
+- Frontend write flows were not clicked through end-to-end with a real
+  signed transaction (no real browser wallet extension in this sandbox).
+  See the new "Frontend" section below for exactly what was/wasn't
+  verified.
 
 ## Commit log (meaningful milestones)
 
@@ -620,3 +621,196 @@ and a repo-wide `grep -rl` for the credential fragment across every
 touched/new file (`app/`, `tests/`, `*.md`, `*.txt`, `*.yml`,
 `.env.example`) before considering this done — zero matches outside
 `backend/.env` itself.
+
+## Frontend: DONE (this session, 2026-09-21)
+
+`frontend/` is a real Next.js 16 (App Router) + TypeScript + Tailwind v4
+app, scaffolded with `create-next-app`, implementing the "Obsidian
+Assurance" dark design system as real Tailwind tokens (`src/app/globals.css`
+`@theme inline` block — exact hex colors from `DESIGN.md`, Inter for UI
+chrome, JetBrains Mono + `tabular-nums` for all onchain numeric/hash data,
+4px/8px radii, `1px solid #00F0FF` focus ring).
+
+### Wallet connection: Reown (WalletConnect) AppKit
+
+Per an explicit mid-session instruction, wallet connection uses **Reown
+AppKit** (`@reown/appkit`, `@reown/appkit-adapter-wagmi`, `wagmi`, `viem`,
+`@tanstack/react-query`), not a bare `window.ethereum` prompt. Project id
+`7fe6800bb991ac35adf13217ea901615` is stored as
+`NEXT_PUBLIC_REOWN_PROJECT_ID` in `frontend/.env.example`/`.env.local` (the
+exact env var name AppKit's own `createAppKit({ projectId })` option
+expects — confirmed by reading the installed package's
+`dist/types/exports/index.d.ts`, not guessed). `src/lib/appkit.ts` builds a
+real `CaipNetwork` from `genlayer-js`'s own `chains.studionet` definition
+(id 61999, "Genlayer Studio Network", its real RPC/nativeCurrency/explorer)
+via `@reown/appkit/networks`'s `defineChain`, so the wallet-connect chain
+config is never invented separately from what genlayer-js itself uses.
+`createAppKit(...)` runs at module scope (client-only), not inside a
+`useEffect`, because AppKit's own hooks throw if called before
+`createAppKit` has run — see `AppShell.tsx`'s mounted-gate below for why
+that still doesn't break static prerendering.
+**Connecting a wallet via AppKit is explicitly NOT treated as
+authentication.** `src/context/WalletContext.tsx` keeps `address` (AppKit
+connection) and `sessionAddress` (backend-authenticated) as separate
+pieces of state; the header shows "Connect wallet" -> "Sign in" as two
+distinct steps, and `signInWithEthereum()` does the real SIWE round trip
+(`POST /auth/nonce` -> `personal_sign` via the AppKit-connected wallet's
+own EIP-1193 provider from `useAppKitProvider` -> `POST /auth/verify` ->
+httpOnly session cookie) against the already-built backend. If the
+connected wallet's address ever stops matching the authenticated session
+address (account switch, disconnect), the session is treated as
+unauthenticated client-side immediately (`WalletContext.tsx`'s
+`sessionMatchesWallet` derivation) — never a stale "signed in" state shown
+for the wrong address.
+
+Installing `@reown/appkit-adapter-wagmi` pulled in `@wagmi/connectors`'
+Coinbase `baseAccount` connector, which imports Coinbase's CDP SDK's
+optional x402 payment-scheme dynamic imports (`@x402/core`, `@x402/evm`,
+`@x402/svm`) — Turbopack's build-time import resolution fails on these
+unless the packages are actually installed, even though nothing in this
+app ever exercises that code path. Fixed by installing them as direct
+(unused) devDependencies rather than papering over it with a webpack
+alias/ignore — genuinely resolvable imports, not a suppressed error.
+
+### Why `AppShell.tsx` exists (mounted-gate, not a workaround for a bug in our code)
+
+AppKit's hooks (`useAppKit`, `useAppKitAccount`, `useAppKitProvider`)
+require `createAppKit()` to have already run, which only happens
+client-side (`typeof window !== "undefined"` guard in `lib/appkit.ts`).
+During Next's build-time static prerender pass `window` is undefined, so
+any page tree that calls these hooks during SSR throws. Rather than
+disabling static prerendering repo-wide, `src/components/AppShell.tsx`
+renders a minimal "Loading Covenant Watch…" placeholder until a
+`useEffect` flips a `mounted` flag, and only then renders `<Providers>`
+(wagmi + react-query) and the real page tree (including every page that
+calls `useWallet()`/`useSigner()`). Confirmed this resolves cleanly:
+`npm run build` prerenders `/`, `/loans`, `/loans/new`, `/history`,
+`/profile`, `/settings` as static and the two `[id]`/`[covenantId]` routes
+as on-demand dynamic, with zero prerender errors.
+
+### Contract wiring (`src/lib/contract.ts`) — read directly from source, not guessed
+
+Every exported function name/argument list matches `contracts/covenant_watch.py`
+exactly, re-derived from a full re-read of the relevant methods this
+session (not trusted from memory): `create_loan`, `lock_collateral`,
+`claim_principal`, `trigger_covenant_check`, `submit_challenge_evidence`,
+`finalize_covenant_check`, `repay_loan`, `reclaim_collateral_timeout`,
+`cancel_loan`, `claim_settlement`, plus every `@gl.public.view`. Two things
+that would have been easy to get wrong from assumption and were instead
+confirmed by reading the source:
+1. `create_loan`'s `covenants_json` array items take a plain `threshold`
+   field (float), NOT a pre-scaled `threshold_scaled` int — the contract's
+   own `_validate_covenant_definition` calls `_scale()` internally. An
+   earlier draft of `CovenantInput` had this backwards; fixed before it
+   shipped.
+2. `_loan_dict`/`_covenant_dict`/`_check_dict` return `status` as the
+   already-human-readable string the contract itself emits via
+   `LOAN_STATUS_NAMES`/`COVENANT_STATUS_NAMES` (e.g. `"BREACH_TIER1"`,
+   `"INCONCLUSIVE"`) — never a raw int the frontend would have to decode
+   with its own guessed mapping. `src/components/StatusBadge.tsx` keys
+   directly off these strings.
+
+`src/lib/genlayer.ts` confirms the real installed `genlayer-js` API by
+reading `node_modules/genlayer-js/dist/*.d.ts` directly (not the training
+cutoff's memory of an earlier SDK version): `createClient({chain,
+provider})`, `client.readContract(...)`, `client.writeContract(...)`,
+`client.waitForTransactionReceipt(...)`, and the real
+`chains.studionet`/`chains.localnet`/etc. exports. `src/lib/tx.ts` drives
+every write through `submitted -> pending -> finalized/failed` off the
+SDK's own `waitForTransactionReceipt` status (`TransactionStatus` enum
+values `CANCELED`/`VALIDATORS_TIMEOUT`/`LEADER_TIMEOUT`/`UNDETERMINED`
+treated as failure) — never a `setTimeout` standing in for status, per the
+working rules.
+
+### Pages built (all real, all wired to the real contract + real backend cache)
+
+`/` (landing), `/loans` (dashboard, backend-cached list with a live
+Collateral Health Gauge per loan), `/loans/new` (full covenant-builder
+form: per-covenant source type/ref/condition/operator/threshold, live
+SSRF-protected preview of OFFCHAIN URLs via the backend's
+`/covenants/preview-source`, client-side vague-condition-phrase rejection
+mirroring the contract's own `VAGUE_CONDITION_FRAGMENTS` list, bounded
+challenge-window slider, tiered consequence schedule inputs), `/loans/[id]`
+(detail + every lifecycle action gated on session address vs.
+lender/borrower — lock collateral, claim principal, repay, cancel,
+reclaim-on-timeout, claim settlement), `/loans/[id]/covenants/[covenantId]/check`
+(trigger button respecting the real on-chain cooldown via
+`get_cooldown_remaining`, real Pinned Snapshot Hash component, Validator
+Consensus Split Meter fed from the transaction receipt's consensus data
+when present, real INCONCLUSIVE state treatment — distinct slate badge,
+explicit "not a breach and not compliance" copy), `/loans/[id]/covenants/[covenantId]/challenge`
+(structurally additive-only: the form has no field that can edit/replace
+the original pinned source or prior evidence, only an "add more evidence"
+input; real challenge-window countdown from the real
+`challenge_window_ends_at` chain field), `/history` (cross-loan check/
+challenge history from the backend cache), `/profile` (session address +
+the user's loans by role), `/settings` (network/contract/backend health +
+sign-out + an explicit, honest "deferred (out of v1 scope)" list — no
+faked functionality).
+
+### Verified this session (actually run, not just written)
+
+- `npm run build` — clean, all 10 routes compile and either statically
+  prerender or correctly mark as on-demand dynamic (the two `[id]`/
+  `[covenantId]` param routes).
+- `npm run lint` — zero errors/warnings after fixing two real issues it
+  caught: a `set-state-in-effect` pattern in the original
+  `WalletContext.tsx` (refactored to a derived value instead of a second
+  effect) and a `BigInt` / ES2020 target mismatch in `tsconfig.json`
+  (bumped from `ES2017`).
+- A live dev server (`npm run dev`, Node 22 via nvm — the sandbox's system
+  `node` is 18.20.8 which Next 16 refuses to run; `.claude/launch.json` at
+  the repo root pins the dev command to a `PATH`-prefixed Node 22 binary)
+  was opened in the actual Browser pane: landing page text confirmed
+  correct including the live `NEXT_PUBLIC_CONTRACT_ADDRESS` display,
+  `/loans/new`'s full form rendered with every field described above, and
+  clicking "Connect wallet" opened the real Reown AppKit modal listing
+  real wallet options (Trust Wallet, MetaMask, Binance Wallet, SafePal,
+  "Search Wallet 80", "UX by reown" footer) — confirming the project id is
+  live and AppKit is correctly wired, not a placeholder. Console showed
+  only the expected `ERR_CONNECTION_REFUSED` from the backend not running
+  in that check — no React/render errors.
+
+### NOT verified in this sandbox (documented rather than faked)
+
+- No real browser wallet extension exists in this sandbox to actually
+  approve a `personal_sign` SIWE request or a `writeContract` transaction
+  (e.g. clicking through a real `create_loan`). Every write path is real
+  code (genlayer-js `writeContract`, real tx-hash-returning calls, no
+  mocked signer, no fabricated receipt) — this is a capability gap in the
+  sandbox, not a simulated integration in the app. After deploying, a
+  human must click through `DEPLOYMENT.md`'s Human Verification Checklist
+  with a real wallet.
+- The backend was not running during the browser smoke test above, so
+  `/auth/*`-dependent UI states (post-sign-in header, `/loans` populated
+  list, `/history`, `/profile`) were not visually confirmed against live
+  data in this session — only their code paths and the loading/empty/error
+  branches were exercised by inspection. Start the backend locally (see
+  its own "Exact local-dev commands" above) alongside `npm run dev` to
+  confirm end-to-end once a wallet is available too.
+- The 6 prototype HTML files named in the task brief
+  (`covenant_watch_protocol_landing_page.html`,
+  `originate_loan_covenants.html`, etc.) were not found anywhere under
+  `/Users/macbook/Downloads` in this sandbox (searched exhaustively) — the
+  IA for each page was built directly from the master spec's §13 quality
+  bar and `DESIGN.md`'s component specs instead, not copied from a
+  prototype that didn't exist here. The emblem/logo (`src/components/
+  Emblem.tsx`, `src/app/icon.svg`) is an original hexagonal-seal SVG design
+  in the Obsidian Assurance palette, not extracted from a prototype file.
+
+### Exact local-dev commands
+
+```bash
+cd frontend
+npm install
+cp .env.example .env.local
+# .env.local defaults already point at the live deployed contract
+# (0x078485282E589a2cb43F6D3263753402045b7192, studionet) and the real
+# Reown project id — only NEXT_PUBLIC_BACKEND_URL needs to match wherever
+# you're running backend/ (default http://localhost:8000)
+
+npm run dev      # requires Node >=20.9 — this sandbox's system node is
+                  # 18.20.8; a newer node (e.g. via nvm) is required
+npm run build    # production build, verified passing in this session
+npm run lint     # verified passing in this session
+```

@@ -1,0 +1,131 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap");
+@import "tailwindcss";
+
+:root {
+  --color-surface: #051424;
+  --color-surface-container-lowest: #010f1f;
+  --color-surface-container-low: #0d1c2d;
+  --color-surface-container: #122131;
+  --color-surface-container-high: #1c2b3c;
+  --color-surface-container-highest: #273647;
+  --color-surface-bright: #2c3a4c;
+  --color-on-surface: #d4e4fa;
+  --color-on-surface-variant: #b9cacb;
+  --color-outline: #849495;
+  --color-outline-variant: #3b494b;
+
+  --color-primary: #dbfcff;
+  --color-on-primary: #00363a;
+  --color-primary-container: #00f0ff;
+  --color-on-primary-container: #006970;
+
+  --color-secondary: #adc6ff;
+  --color-on-secondary: #002e6a;
+  --color-secondary-container: #0566d9;
+  --color-on-secondary-container: #e6ecff;
+
+  --color-tertiary: #d8ffe7;
+  --color-on-tertiary: #003824;
+  --color-tertiary-container: #65f2b5;
+  --color-on-tertiary-container: #006d4a;
+
+  --color-error: #ffb4ab;
+  --color-on-error: #690005;
+  --color-error-container: #93000a;
+  --color-on-error-container: #ffdad6;
+
+  --color-background: #051424;
+  --color-on-background: #d4e4fa;
+  --color-surface-variant: #273647;
+
+  --font-ui: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-onchain: "JetBrains Mono", ui-monospace, monospace;
+}
+
+@theme inline {
+  --color-surface: var(--color-surface);
+  --color-surface-container-lowest: var(--color-surface-container-lowest);
+  --color-surface-container-low: var(--color-surface-container-low);
+  --color-surface-container: var(--color-surface-container);
+  --color-surface-container-high: var(--color-surface-container-high);
+  --color-surface-container-highest: var(--color-surface-container-highest);
+  --color-surface-bright: var(--color-surface-bright);
+  --color-on-surface: var(--color-on-surface);
+  --color-on-surface-variant: var(--color-on-surface-variant);
+  --color-outline: var(--color-outline);
+  --color-outline-variant: var(--color-outline-variant);
+  --color-primary: var(--color-primary);
+  --color-on-primary: var(--color-on-primary);
+  --color-primary-container: var(--color-primary-container);
+  --color-on-primary-container: var(--color-on-primary-container);
+  --color-secondary: var(--color-secondary);
+  --color-on-secondary: var(--color-on-secondary);
+  --color-secondary-container: var(--color-secondary-container);
+  --color-on-secondary-container: var(--color-on-secondary-container);
+  --color-tertiary: var(--color-tertiary);
+  --color-on-tertiary: var(--color-on-tertiary);
+  --color-tertiary-container: var(--color-tertiary-container);
+  --color-on-tertiary-container: var(--color-on-tertiary-container);
+  --color-error: var(--color-error);
+  --color-on-error: var(--color-on-error);
+  --color-error-container: var(--color-error-container);
+  --color-on-error-container: var(--color-on-error-container);
+  --color-background: var(--color-background);
+  --color-on-background: var(--color-on-background);
+  --font-sans: var(--font-ui);
+  --font-mono: var(--font-onchain);
+  --radius-default: 4px;
+  --radius-large: 8px;
+}
+
+* {
+  border-color: var(--color-outline-variant);
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background: var(--color-background);
+  color: var(--color-on-background);
+  font-family: var(--font-ui);
+  -webkit-font-smoothing: antialiased;
+}
+
+.font-onchain {
+  font-family: var(--font-onchain);
+  font-variant-numeric: tabular-nums;
+}
+
+::selection {
+  background: var(--color-primary-container);
+  color: var(--color-on-primary);
+}
+
+.focus-ring {
+  outline: none;
+}
+.focus-ring:focus-visible {
+  outline: 1px solid #00f0ff;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px rgba(0, 240, 255, 0.18);
+  border-radius: 4px;
+}
+
+a,
+button {
+  font-family: inherit;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-surface-container-lowest);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-surface-container-highest);
+  border-radius: 8px;
+}

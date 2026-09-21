@@ -1,0 +1,14 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "frontend-dev",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": [
+        "-c",
+        "PATH=/Users/macbook/.nvm/versions/node/v22.20.0/bin:$PATH npm --prefix frontend run dev"
+      ],
+      "port": 3000
+    }
+  ]
+}

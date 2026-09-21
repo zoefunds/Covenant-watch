@@ -107,7 +107,7 @@ codebase hardcodes it.
 | Where | Variable | File that documents it |
 |---|---|---|
 | Backend | `CONTRACT_ADDRESS` | `backend/.env.example` (local dev) / Fly secret (prod) |
-| Frontend | `NEXT_PUBLIC_CONTRACT_ADDRESS` | `frontend/.env.example` once the frontend exists (see §4) / Vercel env var (prod) |
+| Frontend | `NEXT_PUBLIC_CONTRACT_ADDRESS` | `frontend/.env.example` (see §4) / Vercel env var (prod) |
 
 ```bash
 # Backend — local dev
@@ -119,7 +119,7 @@ cp .env.example .env
 
 # Backend — Fly.io (see §3's `fly secrets set`)
 
-# Frontend — local dev (once frontend/ exists, see §4)
+# Frontend — local dev (see §4)
 cd frontend
 cp .env.example .env.local
 # then edit .env.local:
@@ -204,21 +204,19 @@ rollout.
 
 ## 4. Frontend deploy (Vercel)
 
-**Status: pending — frontend build has not started yet** (`frontend/` is
-still empty as of this section being written; see `memory.md` for current
-status). This section is a placeholder to be filled in once the frontend
-exists; nothing below is fabricated ahead of that work.
-
-Once the Next.js app exists under `frontend/`, the deploy shape will be:
+**Status: complete.** `frontend/` is a real Next.js 16 (App Router) +
+TypeScript + Tailwind app, wired to `genlayer-js` for every contract
+read/write and to the backend REST API (§3) as a read cache for
+history/profile views only. `npm run build` and `npm run lint` both pass
+clean (verified in this session). See `memory.md` for exactly what was and
+wasn't smoke-testable in this sandbox (no real browser wallet extension to
+click through a signed transaction with).
 
 ```bash
 cd frontend
 npm install
 cp .env.example .env.local
-# edit .env.local:
-#   NEXT_PUBLIC_CONTRACT_ADDRESS=0x078485282E589a2cb43F6D3263753402045b7192
-#   NEXT_PUBLIC_API_BASE_URL=https://<your-backend>.fly.dev
-
+# edit .env.local — see the full variable table below
 npm run build   # verify it builds locally before deploying
 
 # You run this yourself, from your own Vercel account:
@@ -229,9 +227,59 @@ In the Vercel dashboard (Project Settings -> Environment Variables), set
 for the Production environment:
 
 ```
-NEXT_PUBLIC_CONTRACT_ADDRESS = 0x078485282E589a2cb43F6D3263753402045b7192
-NEXT_PUBLIC_API_BASE_URL     = https://<your-backend>.fly.dev
+NEXT_PUBLIC_CONTRACT_ADDRESS      = 0x078485282E589a2cb43F6D3263753402045b7192
+NEXT_PUBLIC_GENLAYER_NETWORK      = studionet
+NEXT_PUBLIC_BACKEND_URL           = https://<your-backend>.fly.dev
+NEXT_PUBLIC_GENLAYER_EXPLORER_URL = https://studio.genlayer.com/explorer
+NEXT_PUBLIC_REOWN_PROJECT_ID      = 7fe6800bb991ac35adf13217ea901615
 ```
+
+`NEXT_PUBLIC_REOWN_PROJECT_ID` is the Reown (WalletConnect) AppKit project
+id used for the actual connect-wallet UI (`src/lib/appkit.ts`) — get your
+own at https://dashboard.reown.com if you want a project you administer;
+the value above is what this session was given and is wired as the
+default. All `NEXT_PUBLIC_*` variables are safe to ship to the browser
+bundle by design (unlike backend's `SESSION_SECRET`/`DATABASE_URL`, which
+stay server-only) — this is a public contract address, network name, API
+base URL, explorer URL, and WalletConnect project id, nothing secret.
+
+Also set the backend's CORS allowlist (`backend/app/core/config.py` /
+`CORS_ORIGINS` env var) to include your Vercel production URL, or
+`/auth/*` requests from the deployed frontend will be blocked by the
+browser.
+
+### What wallet connection actually is
+
+Reown AppKit (`@reown/appkit` + `@reown/appkit-adapter-wagmi`, backed by
+`wagmi`/`viem`) provides the connect-wallet modal and the EIP-1193 provider
+for whatever wallet the user picks (MetaMask, WalletConnect-compatible
+mobile wallets, Coinbase Wallet, etc.), configured against a real
+`CaipNetwork` built from the exact `genlayer-js` `chains.studionet`
+definition (`src/lib/appkit.ts`) — verified in this session by opening the
+modal in a live dev server and confirming it lists real wallet options.
+**Connecting a wallet is not authentication.** Every session still goes
+through the real SIWE nonce/verify round trip against the backend
+(`src/context/WalletContext.tsx`'s `signInWithEthereum`): `POST
+/auth/nonce` -> `personal_sign` via the AppKit-connected wallet's own
+provider -> `POST /auth/verify` -> httpOnly session cookie. The header's
+"Connect wallet" -> "Sign in" two-step reflects this directly in the UI.
+
+### What was verified in this sandbox vs. what needs a real wallet
+
+- `next build` and `next lint` both pass clean.
+- A live dev server was opened in-browser: the landing page, `/loans/new`
+  (full covenant-builder form), and the Reown AppKit connect modal (listing
+  real wallets — Trust Wallet, MetaMask, Binance Wallet, SafePal, etc.) all
+  rendered correctly with no React/render console errors (only expected
+  `ERR_CONNECTION_REFUSED` from the backend not running in that check).
+- **Not smoke-tested end-to-end**: actually approving a `personal_sign`
+  request and a real `writeContract` transaction (e.g. `create_loan`)
+  through a live wallet extension — this sandbox has no real browser
+  wallet to click through. The code paths are real (genlayer-js
+  `writeContract`/`waitForTransactionReceipt`, no mocked signer, no
+  simulated tx hash) — this is a sandbox capability gap, not a shortcut
+  taken in the code. After deploying, walk the Human Verification
+  Checklist below with a real wallet.
 
 ---
 
@@ -327,5 +375,5 @@ would also catch.
 | Integration (real network) tests | `tests/integration/` |
 | Backend-only deploy notes | `backend/DEPLOYMENT_BACKEND.md` |
 | Backend env template | `backend/.env.example` |
-| Frontend env template | `frontend/.env.example` (once frontend exists) |
+| Frontend env template | `frontend/.env.example` |
 | Full project status | `memory.md` |
