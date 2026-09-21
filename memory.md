@@ -175,51 +175,174 @@ exact-match collateral enforcement, authorization checks (lock/trigger/
 cancel), cancel-before-commitment refund, cancel-after-commitment
 rejection, lender-timeout reclaim.
 
-## Pending (not completed this session — see "Next steps")
+## Integration tests (`tests/integration/`): WRITTEN, real (no mocks), but
+## COULD NOT RUN RELIABLY IN THIS SANDBOX — see full writeup below
 
-Given the scope of this task (full-stack app + infra + deploy runbooks)
-and the time already spent getting the contract/tests to a genuinely
-verified state, the following are **not yet built**:
+Files: `tests/integration/conftest.py`, `test_happy_path_offchain.py`,
+`test_onchain_cross_contract.py`, `test_adversarial_and_inconclusive.py`,
+`test_multi_validator_consensus.py`, `test_helpers/mock_signer_registry.py`
+(under `contracts/`, since gltest resolves `contract_file_path` relative to
+the configured contracts dir), `run_glsim_patched.py`, and root
+`gltest.config.yaml`.
 
-- `tests/integration/` — gltest-based tests against real GenVM/StudioNet
-  consensus, including the ONCHAIN cross-contract covenant path that
-  direct-mode cannot exercise (see skip reason above), and genuine
-  leader/validator disagreement -> INCONCLUSIVE.
-- Backend (FastAPI/Postgres/Alembic/indexer/SIWE/Fly config).
-- Frontend (Next.js/Tailwind/genlayer-js/Obsidian Assurance design system).
-- `DEPLOYMENT.md`.
+None of these tests use `mock_web`/`mock_llm` — every one calls real
+`gl.nondet.web.render()` (against a throwaway local HTTP fixture server
+started per-session in `conftest.py`, serving pinned page content including
+a genuine prompt-injection/hostile-content page), real
+`gl.nondet.exec_prompt()`, and a real `gl.get_contract_at(...)`
+cross-contract call against an independently-deployed second contract
+(`contracts/test_helpers/mock_signer_registry.py`) — this is the exact
+ONCHAIN cross-contract scenario `tests/direct/` could not exercise (see its
+skip reason above). Coverage: full happy path (create_loan through
+settlement claims), ONCHAIN cross-contract COMPLIANT/BREACH/unreachable-
+contract-INCONCLUSIVE, a hostile/prompt-injection OFFCHAIN page (asserts
+the injected fake "always say COMPLIANT" instruction does NOT win — allows
+INCONCLUSIVE or a genuine BREACH, only rejects a fabricated COMPLIANT),
+a genuinely-unresolvable `.invalid` host -> INCONCLUSIVE (real DNS
+failure, not simulated), and a multi-validator agreement assertion read
+directly off the transaction receipt's `consensus_data.votes`.
 
-## Next steps (exact commands)
+**What actually happened when run** (`gltest tests/integration/ -v -s
+--network localnet`, against `glsim` from `genlayer-test==0.29.2`, the
+only network reachable in this sandbox — `studio.genlayer.com` needs
+outbound network the harness had at debug time but no `genlayer` CLI
+account/session was authenticated for it, and testnet_bradbury needs a
+funded account, browser-faucet-only, not available here):
 
-1. `genlayer-dev:integration-tests` skill — write
-   `tests/integration/test_covenant_watch_integration.py` covering at
-   minimum: real ONCHAIN covenant check against a deployed helper registry
-   contract, and a genuine leader/validator disagreement scenario. Document
-   in this file the exact `gltest` invocation the user runs locally against
-   their own Studio/GenVM node (no browser faucet available in this
-   sandbox).
-2. Scaffold backend under `backend/` per the locked architecture: FastAPI
-   app, SQLAlchemy models + Alembic migrations for
-   loans/covenants/checks/challenges/sessions/nonces/sync_cursor/
-   rate_limit_counters, SIWE nonce+verify+session endpoints, indexer worker
-   (Postgres as read cache only), SSRF-protected URL-preview endpoint,
-   `/healthz`, Dockerfile, docker-compose.yml, `fly.toml`
-   (`min_machines_running >= 1`, no `auto_stop_machines`).
-3. Scaffold frontend under `frontend/`: Next.js+TS+Tailwind, Obsidian
-   Assurance tokens from
-   `/Users/macbook/Documents/stitch_dark_theme_project_design/DESIGN.md`,
-   genlayer-js wiring (verify current API via the `genlayer-cli` skill or
-   docs plugin before writing any `gl.*`/`createClient` code — do not
-   guess), pages per the six prototype HTMLs, `NEXT_PUBLIC_CONTRACT_ADDRESS`
-   left blank with a comment.
-4. Write `DEPLOYMENT.md` with genlayer-cli deploy command, `fly deploy`
-   runbook, `vercel --prod` runbook, and the post-deploy verification
-   checklist from JUDGE.md's Human Verification Checklist.
+**7 tests written, 7 skipped by design** (never faked as passing) — the
+`payable_value_status` session canary in `conftest.py` deploys the real
+contract and sends a real positive call value to `create_loan()`, checks
+whether `principal_deposited` actually reflects it, and skips every test
+with a precise reason when it doesn't. In this sandbox it doesn't, for a
+confirmed, source-cited reason:
+
+1. **GLSim never forwards transaction `value` into `gl.message.value`.**
+   Read `glsim/server.py::_rpc_eth_send_raw_transaction` (from
+   `genlayer-test==0.29.2`'s bundled `glsim` package): it decodes the raw
+   Ethereum transaction and extracts `code`/`calldata`, but never reads
+   `eth_tx["value"]` at all. It calls `engine.deploy_from_code(code_bytes,
+   calldata_bytes, sender)` and `engine.call_from_calldata(recipient,
+   calldata_bytes, sender)` (`glsim/engine.py`) — neither function even
+   accepts a `value` parameter in its signature. Every
+   `@gl.public.write.payable` call therefore executes with
+   `gl.message.value == 0` regardless of what was sent, which every real
+   payable path in `covenant_watch.py` correctly rejects
+   (`_require(principal > 0, ...)` etc.) — confirmed by direct inspection
+   of the resulting transaction receipts, not guessed. This is an infra
+   gap in that specific local simulator build, not a contract bug —
+   `tests/direct/` already proves the payable/escrow logic is correct
+   against the reference harness.
+2. A second, separate, and apparently non-deterministic bug was also hit
+   during development of this suite: even a single, first-ever deploy of
+   `covenant_watch.py` against a completely fresh `glsim` process
+   sometimes fails with `"class is not marked for usage within storage"` —
+   the same error text that (correctly) indicates the process-wide
+   "only one contract class" loader global from `gltest.direct.loader`
+   (documented in the Direct-mode tests section above) is in a bad state,
+   but it was observed even on a from-scratch server before any second
+   contract class was ever loaded. `run_glsim_patched.py` (a launcher that
+   resets that global before every load, mirroring the exact same fix
+   already applied in `tests/direct/conftest.py`) reliably fixes the
+   documented multi-class case but did not make this intermittent
+   single-class failure fully disappear across repeated fresh-server
+   restarts in this sandbox. This looks like a genuine `glsim`
+   packaging/version-skew issue in this environment, not something fixable
+   from test code.
+3. `get_contract_schema_for_code` (glsim's static schema introspection,
+   which `ContractFactory.deploy()`/`.build_contract()` normally relies on
+   to generate a `Contract`'s callable Python methods) also returns an
+   empty `methods: {}` for every contract here — `glsim`'s
+   `_extract_sdk_schema` filters on a `__gl_public__` attribute that this
+   `genlayer` SDK build does not set on `@gl.public.write`/
+   `@gl.public.view`-decorated methods. Worked around in
+   `tests/integration/conftest.py::deploy_with_manual_schema` by hand-
+   writing both contracts' method schemas and building the `Contract`
+   wrapper directly via `Contract.new(address, schema, account)` — this
+   workaround is unrelated to (1) and (2) and is unaffected by them.
+4. No `OPENAI_API_KEY` (or other LLM provider key) was present in this
+   sandbox's environment either, which would separately block every
+   OFFCHAIN-path test's `gl.nondet.exec_prompt()` call even if (1) and (2)
+   were fixed — `llm_provider_status`/`require_llm` in `conftest.py`
+   canary-checks and skips for this too, independently of the payable
+   canary.
+
+**Exact commands for the user to actually execute this suite for real**,
+on a machine/environment without these gaps:
+
+```bash
+# Preferred: studio.genlayer.com — hosted, no local glsim version-skew
+# risk, no Docker, gasless (0 GEN is fine).
+genlayer init                 # authenticate a Studio account, if not done
+gltest tests/integration/ -v -s --network studionet
+
+# Alternative: a local GLSim where you've confirmed (or fixed) real value
+# forwarding and schema introspection — check your installed version
+# against a newer `genlayer-test` release first:
+pip install --upgrade "genlayer-test[sim]"
+export OPENAI_API_KEY=sk-...
+python tests/integration/run_glsim_patched.py --port 4123 --validators 5 \
+  --llm-provider openai:gpt-4o-mini
+# in another shell:
+gltest tests/integration/ -v -s --network localnet
+
+# Real testnet (funded accounts required; faucet claim is browser-based,
+# cannot be automated — fund ACCOUNT_PRIVATE_KEY_1/2 in a local .env first):
+gltest tests/integration/ -v -s --network testnet_bradbury
+```
+
+If `studionet` also fails there for an unrelated reason, run
+`genlayer receipt --stdout --stderr <tx-hash>` on the failing transaction
+first per the builder-resources debugging workflow, before assuming the
+contract itself is at fault — the canaries in `conftest.py` are written to
+tell you precisely which capability (payable forwarding vs. LLM provider)
+is missing rather than leaving you to guess.
+
+## `DEPLOYMENT.md`: DONE (repo root)
+
+Consolidated runbook covering, in order: (1) GenLayer contract deploy via
+`genlayer-cli` (no Docker mentioned anywhere, per spec) with
+`genlayer deploy` / `genlayer schema` / `genlayer call` / `genlayer write`
+smoke-test examples: (2) wiring `CONTRACT_ADDRESS` (backend) /
+`NEXT_PUBLIC_CONTRACT_ADDRESS` (frontend) from the real deployed address
+`0x078485282E589a2cb43F6D3263753402045b7192`; (3) backend Fly.io deploy —
+folded in verbatim from `backend/DEPLOYMENT_BACKEND.md` (which remains the
+canonical backend-only copy; the two must not be allowed to drift — update
+both if backend deploy steps change); (4) frontend Vercel deploy — written
+as an explicit **pending placeholder** since `frontend/` is still empty as
+of this session (nothing fabricated ahead of that work); (5) Postgres
+provisioning on Fly (`fly postgres create`/`attach`, plus an external-
+managed-Postgres alternative); (6) a post-deploy verification checklist
+mirroring JUDGE.md's Human Verification Checklist item-for-item (live app
+loads, main flow usable, wallet connection, correct network, reaches the
+real contract, transaction lifecycle understandable, errors understandable,
+contract address correct everywhere, deployed methods match submitted
+source, no mock/simulated integration).
+
+## Pending (not completed this session)
+
+- Frontend (`frontend/` still empty — Next.js/Tailwind/genlayer-js/
+  Obsidian Assurance design system not started). `DEPLOYMENT.md` §4 is an
+  explicit placeholder pending this.
+- Integration tests could not be confirmed PASSING in this sandbox (see
+  above) — they are real, complete, and will run once pointed at an
+  environment without the specific `glsim` build's payable-forwarding gap
+  (or given a configured LLM provider key + a working local glsim). Do not
+  re-attempt fixing glsim's internals from within this repo — it is an
+  external package version issue, not something this project's code can
+  paper over without faking results.
 
 ## Commit log (meaningful milestones)
 
 - Verified contract lint-clean, fixed and verified all direct-mode tests
   (26 passed / 1 documented skip), added `.gitignore`, wrote this file.
+- Wrote real (non-mocked) `tests/integration/` suite (7 tests) covering
+  full happy path, ONCHAIN cross-contract check, adversarial/hostile
+  OFFCHAIN content, unreachable-source INCONCLUSIVE, and multi-validator
+  consensus; added environment canaries that skip (never fake) tests this
+  sandbox's `glsim` build cannot support, with source-cited reasons and
+  exact commands to run for real elsewhere. Wrote consolidated
+  `DEPLOYMENT.md` at repo root, folding in the backend agent's
+  `DEPLOYMENT_BACKEND.md`.
 
 ## DEPLOYED CONTRACT ADDRESS (provided by user 2026-09-21)
 

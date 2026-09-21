@@ -1,0 +1,41 @@
+# GenLayer integration-test network configuration for Covenant Watch.
+#
+# NO DOCKER: `localnet` here targets GLSim (`glsim`), the lightweight
+# native-Python local GenLayer network started with a plain CLI command —
+# never GenLayer Studio's Docker stack, which the project spec explicitly
+# forbids for this workflow. Start it yourself before running gltest:
+#
+#   pip install "genlayer-test[sim]"
+#   export OPENAI_API_KEY=sk-...          # or another provider glsim supports
+#   glsim --port 4123 --validators 5 --llm-provider openai:gpt-4o-mini
+#
+# Then, in another shell:
+#   gltest tests/integration/ -v -s --network localnet
+#
+# studio.genlayer.com (`studionet`) is gasless — 0 GEN balance is fine, no
+# funding needed. `testnet_bradbury` is a real network and needs funded
+# accounts (browser-based faucet claim — cannot be automated here); put
+# your private keys in a local, gitignored `.env` as
+# ACCOUNT_PRIVATE_KEY_1 / ACCOUNT_PRIVATE_KEY_2 before using it.
+
+networks:
+  default: localnet
+
+  localnet:
+    url: "http://127.0.0.1:4123/api"
+
+  studionet: {}
+  # accounts/url are pre-populated by gltest defaults for this
+  # preconfigured network name; no override needed for the gasless flow.
+
+  testnet_bradbury:
+    # url left at gltest's built-in default for this preconfigured network.
+    accounts:
+      - "${ACCOUNT_PRIVATE_KEY_1}"
+      - "${ACCOUNT_PRIVATE_KEY_2}"
+
+paths:
+  contracts: contracts
+  artifacts: artifacts
+
+environment: .env
