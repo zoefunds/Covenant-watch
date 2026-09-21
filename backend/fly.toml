@@ -1,0 +1,40 @@
+# Fly.io config for 24/7 always-on operation. This file is prepared but
+# NOT deployed by this agent -- the user runs `fly deploy` themselves from
+# backend/. See DEPLOYMENT_BACKEND.md for the exact runbook.
+
+app = "covenant-watch-backend"  # user: rename to your own unique app name before first deploy
+primary_region = "iad"          # user: pick the region closest to your Postgres
+
+[build]
+
+[env]
+  ENV = "production"
+  PORT = "8000"
+  # DATABASE_URL, SESSION_SECRET, CONTRACT_ADDRESS, GENLAYER_NETWORK,
+  # CORS_ALLOWED_ORIGINS, SENTRY_DSN etc. are set as Fly secrets, NOT here
+  # -- see DEPLOYMENT_BACKEND.md.
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  # 24/7 always-on: never let Fly scale this to zero or idle it.
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    grace_period = "20s"
+    interval = "15s"
+    method = "GET"
+    path = "/healthz"
+    protocol = "http"
+    timeout = "5s"
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 512
+
+[deploy]
+  release_command = "alembic upgrade head"
+  strategy = "rolling"

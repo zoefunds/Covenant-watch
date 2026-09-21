@@ -238,3 +238,131 @@ This MUST be wired into:
 
 Any in-progress backend/frontend/deployment-doc work should treat this as
 the real, live, canonical address for this project — not a placeholder.
+
+## Backend: DONE and verified (this session)
+
+`backend/` is a complete FastAPI + PostgreSQL backend, built per the
+locked architecture. Structure: `app/core` (config/logging/sentry),
+`app/models` (SQLAlchemy), `app/schemas` (Pydantic), `app/services`
+(auth/SSRF-preview/chain client), `app/workers/indexer.py`, `app/api`
+(routes), `alembic/` (migrations), plus `Dockerfile`,
+`docker-compose.yml`, `fly.toml`, `.env.example`, `README.md`,
+`DEPLOYMENT_BACKEND.md`.
+
+### What's verified (actually run, not just written)
+
+- **Migrations**: Python 3.12 venv (genlayer-py 0.16.3 requires >=3.12;
+  this machine's default `python3` is 3.14 which breaks pydantic-core's
+  Rust build — used `~/.pyenv/versions/3.12.7`). `alembic revision
+  --autogenerate` then `alembic upgrade head` ran clean against a real
+  **local Homebrew Postgres 16** instance (Docker Desktop's daemon was not
+  running in this sandbox, so docker-compose itself was written but not
+  itself exercised — see DEPLOYMENT_BACKEND.md for what that means for
+  you before you rely on it). All 8 tables created
+  (loans/covenants/checks/challenges/sessions/nonces/sync_cursor/
+  rate_limit_counters) with FKs, indexes, and non-negative CHECK
+  constraints on every money column.
+- **Auth round-trip**: ran the live FastAPI app (`uvicorn`) against that
+  Postgres and drove the full SIWE flow with an ephemeral throwaway
+  eth-account keypair (test-only, ok per working rules): `POST
+  /auth/nonce` → sign the returned message → `POST /auth/verify` → signed
+  httpOnly/SameSite=strict session cookie → authenticated `GET /auth/me`
+  succeeds → replaying the same signature/nonce correctly 401s
+  ("nonce already used") → a signature from a *different* key claiming
+  the first address correctly 401s ("signature does not match claimed
+  address"). Unauthenticated `GET /auth/me` correctly 401s.
+- **SSRF preview endpoint**: confirmed `POST /covenants/preview-source`
+  blocks `169.254.169.254` (cloud metadata), `localhost`, `file://`
+  scheme, and private ranges, while successfully fetching a real public
+  URL (`https://example.com`). DNS is resolved and the resolved IP
+  checked (not string-matched), on every redirect hop.
+- **Indexer against the REAL deployed contract**: set `CONTRACT_ADDRESS`
+  to the live StudioNet address above, restarted the backend, and
+  confirmed via `/healthz` that the indexer transitioned from
+  `waiting_for_contract_address` (with `CONTRACT_ADDRESS` unset) to a
+  successful sync pass (`state: idle`, `last_success_at` populated, no
+  error) reading `get_loan_count()` → `0` (correct — no loans created on
+  it yet; not fabricated). Then unset `CONTRACT_ADDRESS` again before
+  leaving the repo in its default deploy-ready state.
+- **genlayer-py API discovery** (verified empirically against the
+  installed `genlayer-py==0.16.3`, not guessed): `create_client(chain=...,
+  account=...)` and `client.read_contract(address, function_name,
+  args=[...])`. Important undocumented finding: `read_contract` requires
+  *some* local account bound to the client even for pure view/read calls
+  — there is no account-less read path in this SDK version. Since this
+  backend is read-only against the chain (all writes happen from the
+  user's own wallet in the frontend), `app/services/chain_client.py`
+  generates a throwaway ephemeral local keypair purely to satisfy that
+  requirement; it never holds funds or signs a write.
+- **Tests**: `pytest tests/` → 10 passed (SSRF blocklist parametrized
+  cases + SIWE message construction). These are pure unit tests with no
+  DB dependency, separate from the manual live round-trip above.
+
+### Design notes worth remembering
+
+- Postgres is a read cache, never source of truth — documented in
+  `backend/README.md` "Cache vs. live" section and in code comments on
+  `chain_client.read_contract_view` / the `Loan`/`Covenant`/`Check`
+  models' docstrings.
+- `rate_limit_counters` table + slowapi rate limits are explicitly
+  documented (README + code comments) as defense-in-depth / UX only — the
+  contract's own on-chain cooldown (`get_cooldown_remaining`) is the real
+  enforcement boundary and cannot be bypassed via the API.
+- Config reload for `CONTRACT_ADDRESS`: supported path is **restart the
+  process** (documented choice over hot-reload, see
+  `app/workers/indexer.py` docstring and `README.md`) — a stale cached
+  contract address silently pointing at the wrong contract is worse than
+  a 10s restart.
+- One real bug found and fixed during smoke testing: applying `slowapi`'s
+  `@limiter.limit(...)` decorator under a module using `from __future__
+  import annotations` broke FastAPI's OpenAPI schema generation and body
+  parsing (Pydantic model params silently reinterpreted as query params)
+  because the decorator's wrapping changes the effective `__globals__`
+  used for forward-ref resolution. Fixed by removing the `__future__`
+  import from `app/api/auth.py` and `app/api/covenants.py` (the two
+  rate-limited route modules) — documented here so it isn't
+  reintroduced by accident.
+
+### Pending / not done in this session
+
+- `docker-compose.yml` / `Dockerfile` are written and structurally
+  reviewed but **not themselves run** — Docker Desktop's daemon was not
+  available in this sandbox (attempted `open -a Docker`, did not come up
+  in time). Before relying on it: run `docker compose up --build` once
+  Docker is available and confirm the same `/healthz` + migration
+  behavior as the manual venv+local-Postgres path above.
+- No integration test hits the indexer against a contract that actually
+  *has* loans on it yet (the live contract currently has
+  `get_loan_count() == 0`) — the upsert logic in
+  `app/workers/indexer.py` (`_upsert_loan`/`_upsert_covenant`/
+  `_upsert_check`) is implemented against the exact `_loan_dict`/
+  `_covenant_dict`/`_check_dict` shapes in `contracts/covenant_watch.py`
+  but has not been exercised against a real non-empty loan. Once a loan
+  exists on-chain, rerun the indexer and verify `/loans/{id}` returns it
+  correctly shaped.
+- Frontend (`frontend/`) not started.
+- Consolidated repo-root `DEPLOYMENT.md` not written — `backend/
+  DEPLOYMENT_BACKEND.md` holds the backend-specific runbook and is meant
+  to be folded in later without losing anything.
+
+### Exact local-dev commands
+
+```bash
+cd backend
+python3.12 -m venv .venv && source .venv/bin/activate   # must be >=3.12
+pip install -r requirements-dev.txt
+cp .env.example .env   # set SESSION_SECRET; leave CONTRACT_ADDRESS blank
+                        # until you deploy, or set it to
+                        # 0x078485282E589a2cb43F6D3263753402045b7192
+                        # to point at this project's live StudioNet deploy
+
+# point DATABASE_URL in .env at a real local Postgres, e.g.:
+#   postgresql+psycopg://<user>@localhost:5432/covenant_watch
+
+alembic upgrade head
+uvicorn app.main:app --reload --port 8000
+curl localhost:8000/healthz
+
+# or, once Docker is available:
+docker compose up --build
+```
