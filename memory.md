@@ -877,3 +877,38 @@ npm run dev      # requires Node >=20.9 — this sandbox's system node is
 npm run build    # production build, verified passing in this session
 npm run lint     # verified passing in this session
 ```
+
+## LIVE DEPLOYMENT (2026-09-21/22)
+
+- Frontend: https://covenant-watch.vercel.app (Vercel, project `covenant-watch`,
+  org `adebiyi2002gmailcoms-projects`).
+- Backend: https://covenant-watch-backend.fly.dev (Fly.io, app
+  `covenant-watch-backend`, region `iad`), 2 machines always-on, health
+  check passing (`/healthz`: database ok, indexer idle/synced against the
+  live contract, rpc_budget tracking live).
+- Postgres: Fly Postgres cluster `covenant-watch-db` (unmanaged flex),
+  attached via `fly postgres attach`, `DATABASE_URL` set as a Fly secret
+  (corrected to `postgresql+psycopg://` scheme — `fly postgres attach`
+  defaults to a bare `postgres://` scheme which SQLAlchemy's psycopg driver
+  rejects; overrode with `fly secrets set` immediately after attaching).
+- Redis (Upstash, user-supplied): wired as `REDIS_URL` Fly secret for the
+  RPC budget tracker + distributed rate limiting.
+- Contract: 0x078485282E589a2cb43F6D3263753402045b7192 (deployed by the
+  user to StudioNet).
+- Real bug fixed during this deploy: `fly launch --no-deploy` did not
+  allocate any IPv4/IPv6 addresses for the new app (`fly ips list` came
+  back empty), so the app was unreachable from the public internet even
+  though both machines and health checks were fully passing internally.
+  Fixed with `fly ips allocate-v4 --shared` + `fly ips allocate-v6`.
+- Also fixed: `NEXT_PUBLIC_GENLAYER_EXPLORER_URL` was wrong in every file
+  (`.env.example`, `.env.local`, `src/lib/config.ts`, `DEPLOYMENT.md`) —
+  had `https://studio.genlayer.com/explorer`, corrected to
+  `https://explorer-studio.genlayer.com/` per user correction.
+
+### Still pending (user-side)
+- Click through the real wallet-connect + SIWE + create_loan flow in the
+  live app with a real wallet extension — never smoke-tested end-to-end
+  since no sandbox had one.
+- CORS is currently locked to `https://covenant-watch.vercel.app` only;
+  update `CORS_ALLOWED_ORIGINS` Fly secret if a custom domain is added
+  later.

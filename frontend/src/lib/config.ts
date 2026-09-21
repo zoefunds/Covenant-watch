@@ -18,7 +18,7 @@ export const GENLAYER_NETWORK = (process.env.NEXT_PUBLIC_GENLAYER_NETWORK || "st
 export const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
 
 export const GENLAYER_EXPLORER_URL =
-  process.env.NEXT_PUBLIC_GENLAYER_EXPLORER_URL || "https://studio.genlayer.com/explorer";
+  process.env.NEXT_PUBLIC_GENLAYER_EXPLORER_URL || "https://explorer-studio.genlayer.com/";
 
 // Reown (WalletConnect) AppKit project id — https://dashboard.reown.com.
 // AppKit only handles wallet CONNECTION; it is never treated as

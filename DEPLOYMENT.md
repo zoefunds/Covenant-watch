@@ -230,7 +230,7 @@ for the Production environment:
 NEXT_PUBLIC_CONTRACT_ADDRESS      = 0x078485282E589a2cb43F6D3263753402045b7192
 NEXT_PUBLIC_GENLAYER_NETWORK      = studionet
 NEXT_PUBLIC_BACKEND_URL           = https://<your-backend>.fly.dev
-NEXT_PUBLIC_GENLAYER_EXPLORER_URL = https://studio.genlayer.com/explorer
+NEXT_PUBLIC_GENLAYER_EXPLORER_URL = https://explorer-studio.genlayer.com/
 NEXT_PUBLIC_REOWN_PROJECT_ID      = 7fe6800bb991ac35adf13217ea901615
 ```
 
