@@ -2,7 +2,7 @@
 // here so nothing is hardcoded inline in a component.
 
 export const CONTRACT_ADDRESS = (
-  process.env.NEXT_PUBLIC_CONTRACT_ADDRESS || "0x078485282E589a2cb43F6D3263753402045b7192"
+  process.env.NEXT_PUBLIC_CONTRACT_ADDRESS || "0x601D14Fd4e99989883eeCC6a61dB6F0755AdF9a7"
 ) as `0x${string}`;
 
 // "studionet" is the network this project's contract is actually deployed

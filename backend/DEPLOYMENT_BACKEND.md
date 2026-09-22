@@ -18,7 +18,7 @@ should be lost when that happens.
   deployment is already live at:
 
   ```
-  CONTRACT_ADDRESS=0x078485282E589a2cb43F6D3263753402045b7192
+  CONTRACT_ADDRESS=0x601D14Fd4e99989883eeCC6a61dB6F0755AdF9a7
   ```
 
   (StudioNet -- see repo-root `memory.md` for the deployment record.)
@@ -36,7 +36,7 @@ fly launch --no-deploy   # creates the app from fly.toml, does NOT deploy yet
 fly secrets set \
   DATABASE_URL="postgresql+psycopg://<user>:<pass>@<host>:5432/<db>" \
   SESSION_SECRET="$(python3 -c 'import secrets; print(secrets.token_hex(32))')" \
-  CONTRACT_ADDRESS="0x078485282E589a2cb43F6D3263753402045b7192" \
+  CONTRACT_ADDRESS="0x601D14Fd4e99989883eeCC6a61dB6F0755AdF9a7" \
   GENLAYER_NETWORK="studionet" \
   CORS_ALLOWED_ORIGINS="https://<your-frontend>.vercel.app" \
   COOKIE_DOMAIN="<your-api-domain-or-leave-unset-for-apex>" \
@@ -91,6 +91,6 @@ rollout.
 - `/healthz` reporting `waiting_for_contract_address` with no
   `CONTRACT_ADDRESS` set, then a live indexer sync pass (`state: idle`,
   `last_success_at` populated, no error) against the **real deployed
-  contract** at `0x078485282E589a2cb43F6D3263753402045b7192` on StudioNet
+  contract** at `0x601D14Fd4e99989883eeCC6a61dB6F0755AdF9a7` on StudioNet
   -- `get_loan_count()` returned `0` (no loans created on it yet), which
   is the correct, non-fabricated result.

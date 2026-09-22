@@ -32,14 +32,14 @@ genlayer deploy \
   --network studionet
 
 # The command prints the new contract's address, e.g.:
-#   Contract deployed at: 0x078485282E589a2cb43F6D3263753402045b7192
+#   Contract deployed at: 0x601D14Fd4e99989883eeCC6a61dB6F0755AdF9a7
 ```
 
 This project's own live StudioNet deployment (already done by the user)
 is at:
 
 ```
-0x078485282E589a2cb43F6D3263753402045b7192
+0x601D14Fd4e99989883eeCC6a61dB6F0755AdF9a7
 ```
 
 Treat this as the concrete example value below — replace it with your own
@@ -48,7 +48,7 @@ address if you redeploy.
 ### Fetch the deployed schema/ABI
 
 ```bash
-genlayer schema --contract-address 0x078485282E589a2cb43F6D3263753402045b7192 \
+genlayer schema --contract-address 0x601D14Fd4e99989883eeCC6a61dB6F0755AdF9a7 \
   --network studionet
 ```
 
@@ -60,14 +60,14 @@ with:
 
 ```bash
 genlayer receipt --stdout --stderr <deploy-tx-hash>
-genlayer code --contract-address 0x078485282E589a2cb43F6D3263753402045b7192 --network studionet
+genlayer code --contract-address 0x601D14Fd4e99989883eeCC6a61dB6F0755AdF9a7 --network studionet
 ```
 
 ### Smoke-test a read and a write
 
 ```bash
 # Read: total loan count on the fresh deployment should be 0
-genlayer call --contract-address 0x078485282E589a2cb43F6D3263753402045b7192 \
+genlayer call --contract-address 0x601D14Fd4e99989883eeCC6a61dB6F0755AdF9a7 \
   --network studionet \
   get_loan_count
 
@@ -75,7 +75,7 @@ genlayer call --contract-address 0x078485282E589a2cb43F6D3263753402045b7192 \
 # second account of yours; this sends real principal as call value, so use
 # a trivial amount on StudioNet, which is gasless — 0 GEN balance is fine
 # for gas, but call value still needs to be a real positive number).
-genlayer write --contract-address 0x078485282E589a2cb43F6D3263753402045b7192 \
+genlayer write --contract-address 0x601D14Fd4e99989883eeCC6a61dB6F0755AdF9a7 \
   --network studionet \
   --value 1000 \
   create_loan \
@@ -84,7 +84,7 @@ genlayer write --contract-address 0x078485282E589a2cb43F6D3263753402045b7192 \
   0
 
 # Confirm it landed:
-genlayer call --contract-address 0x078485282E589a2cb43F6D3263753402045b7192 \
+genlayer call --contract-address 0x601D14Fd4e99989883eeCC6a61dB6F0755AdF9a7 \
   --network studionet \
   get_loan_count
 # -> should now return 1
@@ -114,7 +114,7 @@ codebase hardcodes it.
 cd backend
 cp .env.example .env
 # then edit .env:
-#   CONTRACT_ADDRESS=0x078485282E589a2cb43F6D3263753402045b7192
+#   CONTRACT_ADDRESS=0x601D14Fd4e99989883eeCC6a61dB6F0755AdF9a7
 #   GENLAYER_NETWORK=studionet
 
 # Backend — Fly.io (see §3's `fly secrets set`)
@@ -123,10 +123,10 @@ cp .env.example .env
 cd frontend
 cp .env.example .env.local
 # then edit .env.local:
-#   NEXT_PUBLIC_CONTRACT_ADDRESS=0x078485282E589a2cb43F6D3263753402045b7192
+#   NEXT_PUBLIC_CONTRACT_ADDRESS=0x601D14Fd4e99989883eeCC6a61dB6F0755AdF9a7
 
 # Frontend — Vercel (Project Settings -> Environment Variables):
-#   NEXT_PUBLIC_CONTRACT_ADDRESS = 0x078485282E589a2cb43F6D3263753402045b7192
+#   NEXT_PUBLIC_CONTRACT_ADDRESS = 0x601D14Fd4e99989883eeCC6a61dB6F0755AdF9a7
 ```
 
 The frontend variable is prefixed `NEXT_PUBLIC_` deliberately — it's a
@@ -160,7 +160,7 @@ fly launch --no-deploy   # creates the app from fly.toml, does NOT deploy yet
 fly secrets set \
   DATABASE_URL="postgresql+psycopg://<user>:<pass>@<host>:5432/<db>" \
   SESSION_SECRET="$(python3 -c 'import secrets; print(secrets.token_hex(32))')" \
-  CONTRACT_ADDRESS="0x078485282E589a2cb43F6D3263753402045b7192" \
+  CONTRACT_ADDRESS="0x601D14Fd4e99989883eeCC6a61dB6F0755AdF9a7" \
   GENLAYER_NETWORK="studionet" \
   CORS_ALLOWED_ORIGINS="https://<your-frontend>.vercel.app" \
   COOKIE_DOMAIN="<your-api-domain-or-leave-unset-for-apex>" \
@@ -196,7 +196,7 @@ rollout.
 - `/healthz` reporting `waiting_for_contract_address` with no
   `CONTRACT_ADDRESS` set, then a live indexer sync pass (`state: idle`,
   `last_success_at` populated, no error) against the **real deployed
-  contract** at `0x078485282E589a2cb43F6D3263753402045b7192` on StudioNet
+  contract** at `0x601D14Fd4e99989883eeCC6a61dB6F0755AdF9a7` on StudioNet
   — `get_loan_count()` returned `0` (no loans created on it yet at the
   time), which is the correct, non-fabricated result.
 
@@ -227,7 +227,7 @@ In the Vercel dashboard (Project Settings -> Environment Variables), set
 for the Production environment:
 
 ```
-NEXT_PUBLIC_CONTRACT_ADDRESS      = 0x078485282E589a2cb43F6D3263753402045b7192
+NEXT_PUBLIC_CONTRACT_ADDRESS      = 0x601D14Fd4e99989883eeCC6a61dB6F0755AdF9a7
 NEXT_PUBLIC_GENLAYER_NETWORK      = studionet
 NEXT_PUBLIC_BACKEND_URL           = https://<your-backend>.fly.dev
 NEXT_PUBLIC_GENLAYER_EXPLORER_URL = https://explorer-studio.genlayer.com/

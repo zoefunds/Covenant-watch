@@ -9,7 +9,7 @@ earlier in-progress note that contradicts it.
 ## Current state, at a glance (accurate as of 2026-09-22)
 
 - **Contract**: done, lint-clean, deployed to GenLayer StudioNet at
-  `0x078485282E589a2cb43F6D3263753402045b7192`.
+  `0x601D14Fd4e99989883eeCC6a61dB6F0755AdF9a7`.
 - **Direct-mode tests** (`tests/direct/`): 26 passed, 1 skipped (documented
   environment limitation — direct mode cannot exercise cross-contract calls;
   see "Direct-mode tests" section below).
@@ -337,7 +337,7 @@ Consolidated runbook covering, in order: (1) GenLayer contract deploy via
 `genlayer deploy` / `genlayer schema` / `genlayer call` / `genlayer write`
 smoke-test examples: (2) wiring `CONTRACT_ADDRESS` (backend) /
 `NEXT_PUBLIC_CONTRACT_ADDRESS` (frontend) from the real deployed address
-`0x078485282E589a2cb43F6D3263753402045b7192`; (3) backend Fly.io deploy —
+`0x601D14Fd4e99989883eeCC6a61dB6F0755AdF9a7`; (3) backend Fly.io deploy —
 folded in verbatim from `backend/DEPLOYMENT_BACKEND.md` (which remains the
 canonical backend-only copy; the two must not be allowed to drift — update
 both if backend deploy steps change); (4) frontend Vercel deploy — at the
@@ -387,7 +387,7 @@ The user has deployed `contracts/covenant_watch.py` to GenLayer StudioNet
 themselves. The canonical deployed address is:
 
 ```
-0x078485282E589a2cb43F6D3263753402045b7192
+0x601D14Fd4e99989883eeCC6a61dB6F0755AdF9a7
 ```
 
 This MUST be wired into:
@@ -522,7 +522,7 @@ python3.12 -m venv .venv && source .venv/bin/activate   # must be >=3.12
 pip install -r requirements-dev.txt
 cp .env.example .env   # set SESSION_SECRET; leave CONTRACT_ADDRESS blank
                         # until you deploy, or set it to
-                        # 0x078485282E589a2cb43F6D3263753402045b7192
+                        # 0x601D14Fd4e99989883eeCC6a61dB6F0755AdF9a7
                         # to point at this project's live StudioNet deploy
 
 # point DATABASE_URL in .env at a real local Postgres, e.g.:
@@ -609,7 +609,7 @@ below).
    round-trip over `rediss://` TLS.
 2. Called `app.services.chain_client.read_contract_view("get_loan_count")`
    directly against the live deployed contract
-   (`0x078485282E589a2cb43F6D3263753402045b7192`) — got a real `0` back
+   (`0x601D14Fd4e99989883eeCC6a61dB6F0755AdF9a7`) — got a real `0` back
    (correct, no loans on it yet) — and confirmed via a **separate, raw**
    Redis client read (bypassing this project's own status-reporting code)
    that key `genlayer:rpc_budget:<hour>` went from unset to `1` in the
@@ -942,7 +942,7 @@ cd frontend
 npm install
 cp .env.example .env.local
 # .env.local defaults already point at the live deployed contract
-# (0x078485282E589a2cb43F6D3263753402045b7192, studionet) and the real
+# (0x601D14Fd4e99989883eeCC6a61dB6F0755AdF9a7, studionet) and the real
 # Reown project id — only NEXT_PUBLIC_BACKEND_URL needs to match wherever
 # you're running backend/ (default http://localhost:8000)
 
@@ -967,7 +967,7 @@ npm run lint     # verified passing in this session
   rejects; overrode with `fly secrets set` immediately after attaching).
 - Redis (Upstash, user-supplied): wired as `REDIS_URL` Fly secret for the
   RPC budget tracker + distributed rate limiting.
-- Contract: 0x078485282E589a2cb43F6D3263753402045b7192 (deployed by the
+- Contract: 0x601D14Fd4e99989883eeCC6a61dB6F0755AdF9a7 (deployed by the
   user to StudioNet).
 - Real bug fixed during this deploy: `fly launch --no-deploy` did not
   allocate any IPv4/IPv6 addresses for the new app (`fly ips list` came
@@ -990,7 +990,7 @@ npm run lint     # verified passing in this session
 ## CRITICAL CONTRACT BUG FOUND AND FIXED (2026-09-22) — requires redeploy
 
 Root cause of "created loan doesn't show on the frontend": the live
-deployed contract (0x078485282E589a2cb43F6D3263753402045b7192) reverts
+deployed contract (0x601D14Fd4e99989883eeCC6a61dB6F0755AdF9a7) reverts
 with a bare "execution failed" on `get_covenant`, `get_loan_covenants`,
 `get_check`, and every other view that returns `threshold` or
 `observed_value`, because those fields were computed as
@@ -1025,7 +1025,7 @@ verified clean.
 
 **This requires a contract REDEPLOY — GenLayer Intelligent Contracts are
 not upgradeable in place.** The currently deployed address
-(0x078485282E589a2cb43F6D3263753402045b7192) still has the float bug and
+(0x601D14Fd4e99989883eeCC6a61dB6F0755AdF9a7) still has the float bug and
 cannot be patched; a new deployment gets a new address, and the one real
 loan already created on the old contract (loan id 0, principal 1000 GEN,
 2 covenants) will not exist on the new one — it is orphaned, not
@@ -1040,3 +1040,21 @@ DEPLOYMENT.md section 1), then supplies the new `DEPLOYED_CONTRACT_ADDRESS`
 so it can be wired into `CONTRACT_ADDRESS` (backend Fly secret) and
 `NEXT_PUBLIC_CONTRACT_ADDRESS` (frontend Vercel env var + redeploy), same
 process as the first deployment.
+
+## REDEPLOYED CONTRACT (2026-09-22)
+
+User redeployed `contracts/covenant_watch.py` (with the float-return fix
+above) to StudioNet at a new address:
+
+```
+0x601D14Fd4e99989883eeCC6a61dB6F0755AdF9a7
+```
+
+The old address (0x0784...7192) is now stale everywhere and has been
+fully replaced in every doc/config file. The Postgres read-cache
+(loans/covenants/checks/challenges/sync_cursor) was TRUNCATEd on the live
+Fly Postgres instance — it only ever held data synced from the old, buggy
+contract (one orphaned loan with unlocked collateral, no funds at risk),
+so a clean wipe was correct rather than trying to filter by address.
+`CONTRACT_ADDRESS` Fly secret and `NEXT_PUBLIC_CONTRACT_ADDRESS` Vercel
+env var both updated and redeployed.

@@ -109,7 +109,7 @@ URL, and WalletConnect project id, nothing secret.
 npm install
 cp .env.example .env.local
 # defaults already point at the live deployed contract
-# (0x078485282E589a2cb43F6D3263753402045b7192, studionet) and a working
+# (0x601D14Fd4e99989883eeCC6a61dB6F0755AdF9a7, studionet) and a working
 # Reown project id — only NEXT_PUBLIC_BACKEND_URL needs to match wherever
 # you're running backend/ (default http://localhost:8000)
 
