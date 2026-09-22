@@ -1,7 +1,40 @@
 # Covenant Watch — Project Memory
 
-Living status doc. Update this as work progresses; it is the canonical
-source of truth for what's built vs. pending.
+Living status doc, written iteratively across many sessions. Read
+top-to-bottom this reads like a build log (some early "pending" notes were
+later completed further down); for the **current, accurate state** trust the
+sections marked accordingly and the summary immediately below over any
+earlier in-progress note that contradicts it.
+
+## Current state, at a glance (accurate as of 2026-09-22)
+
+- **Contract**: done, lint-clean, deployed to GenLayer StudioNet at
+  `0x078485282E589a2cb43F6D3263753402045b7192`.
+- **Direct-mode tests** (`tests/direct/`): 26 passed, 1 skipped (documented
+  environment limitation — direct mode cannot exercise cross-contract calls;
+  see "Direct-mode tests" section below).
+- **Integration tests** (`tests/integration/`): written, real (no mocks),
+  7 tests, all skipped in every sandbox this project has been developed in
+  so far due to a `glsim` build gap (does not forward transaction `value`)
+  plus no LLM provider key being available in-sandbox — never run to a
+  passing result yet. Exact commands to run them for real (e.g. against
+  `studionet`) are in the "Integration tests" section below.
+- **Backend**: done, deployed to Fly.io at
+  https://covenant-watch-backend.fly.dev, live and healthy. Includes the
+  Redis-backed GenLayer RPC budget + distributed rate limiting feature.
+- **Frontend**: done, deployed to Vercel at
+  https://covenant-watch.vercel.app.
+- **Postgres**: Fly Postgres, attached and migrated.
+- **Redis**: Upstash, wired as a Fly secret.
+- Root `README.md` and this file's cleanup pass: done (this session).
+
+The "Pending" sections still embedded below (frontend not started, backend
+not started, DEPLOYMENT.md not written, etc.) describe states from
+**earlier** sessions and are superseded by the above — kept for the build
+history, not as current status. The one item that remains genuinely
+outstanding: a human clicking through the live app with a real wallet
+extension to confirm the wallet-connect + SIWE + `create_loan` flow
+end-to-end (see "Still pending (user-side)" at the bottom).
 
 ## What this project is
 
@@ -307,9 +340,12 @@ smoke-test examples: (2) wiring `CONTRACT_ADDRESS` (backend) /
 `0x078485282E589a2cb43F6D3263753402045b7192`; (3) backend Fly.io deploy —
 folded in verbatim from `backend/DEPLOYMENT_BACKEND.md` (which remains the
 canonical backend-only copy; the two must not be allowed to drift — update
-both if backend deploy steps change); (4) frontend Vercel deploy — written
-as an explicit **pending placeholder** since `frontend/` is still empty as
-of this session (nothing fabricated ahead of that work); (5) Postgres
+both if backend deploy steps change); (4) frontend Vercel deploy — at the
+time this was written, `frontend/` was still empty, so this section was an
+explicit **pending placeholder** (nothing fabricated ahead of that work);
+**superseded since** — the frontend was built in a later session and
+`DEPLOYMENT.md` §4 now documents the real, live Vercel deploy, not a
+placeholder; (5) Postgres
 provisioning on Fly (`fly postgres create`/`attach`, plus an external-
 managed-Postgres alternative); (6) a post-deploy verification checklist
 mirroring JUDGE.md's Human Verification Checklist item-for-item (live app
@@ -447,7 +483,14 @@ locked architecture. Structure: `app/core` (config/logging/sentry),
   rate-limited route modules) — documented here so it isn't
   reintroduced by accident.
 
-### Pending / not done in this session
+### Pending / not done in this session (backend-session snapshot — SUPERSEDED, see below)
+
+> The two items below ("Frontend not started" and "DEPLOYMENT.md not
+> written") describe the state as of *this particular backend session* and
+> are now stale — a later session built the full frontend (see "Frontend:
+> DONE" further below) and wrote the consolidated root `DEPLOYMENT.md`. Kept
+> here only as a historical record of the backend-only session's own
+> checklist; do not treat them as current.
 
 - `docker-compose.yml` / `Dockerfile` are written and structurally
   reviewed but **not themselves run** — Docker Desktop's daemon was not
@@ -464,8 +507,10 @@ locked architecture. Structure: `app/core` (config/logging/sentry),
   but has not been exercised against a real non-empty loan. Once a loan
   exists on-chain, rerun the indexer and verify `/loans/{id}` returns it
   correctly shaped.
-- Frontend (`frontend/`) not started.
-- Consolidated repo-root `DEPLOYMENT.md` not written — `backend/
+- ~~Frontend (`frontend/`) not started.~~ **Superseded — see "Frontend:
+  DONE" below.**
+- ~~Consolidated repo-root `DEPLOYMENT.md` not written.~~ **Superseded —
+  `DEPLOYMENT.md` exists at repo root and is current.** `backend/
   DEPLOYMENT_BACKEND.md` holds the backend-specific runbook and is meant
   to be folded in later without losing anything.
 
