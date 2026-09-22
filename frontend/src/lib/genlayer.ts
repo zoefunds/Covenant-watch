@@ -28,13 +28,25 @@ export function getReadClient(): GenLayerClient<any> {
  * signature request, never a simulated/local-only signer. Callers must
  * pass the live provider from the AppKit hook; there is no window.ethereum
  * fallback because AppKit is the single connect path for this app.
+ *
+ * `account` MUST be bound here, at client-construction time, as the plain
+ * address string — genlayer-js hands that straight to viem's
+ * createWalletClient({ account }), which normalizes a raw address into a
+ * proper Account (adding .address/.signTransaction etc.) via its own
+ * parseAccount. Passing a raw address string into a per-call `account`
+ * argument on writeContract/readContract instead (as this code used to)
+ * skips that normalization — genlayer-js's own writeContract does
+ * `senderAccount = account || client.account` and then reads
+ * `senderAccount.address` directly, so a bare string there yields
+ * `undefined` and fails address validation deep inside viem. Binding the
+ * account on the client avoids ever taking that path.
  */
-export function getWalletClient(provider: any): GenLayerClient<any> {
+export function getWalletClient(provider: any, address?: string): GenLayerClient<any> {
   if (!provider) {
     throw new Error("No wallet connected. Use the Connect Wallet button (Reown AppKit) to continue.");
   }
   const chain = resolveChain();
-  return createClient({ chain, provider });
+  return createClient({ chain, provider, ...(address ? { account: address as `0x${string}` } : {}) });
 }
 
 export { CONTRACT_ADDRESS };

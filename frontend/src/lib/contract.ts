@@ -130,9 +130,11 @@ export interface Signer {
 }
 
 async function write(signer: Signer, functionName: string, args: any[] = [], value: bigint = 0n) {
-  const client = getWalletClient(signer.provider);
+  // Account is bound on the client itself (see getWalletClient) so viem
+  // normalizes it into a proper Account — never pass the raw address
+  // string as a per-call `account` here, see genlayer.ts for why.
+  const client = getWalletClient(signer.provider, signer.address);
   return client.writeContract({
-    account: signer.address as any,
     address: CONTRACT_ADDRESS,
     functionName,
     args,
