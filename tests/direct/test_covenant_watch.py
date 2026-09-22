@@ -399,7 +399,10 @@ def test_offchain_compliant_check(direct_vm, direct_deploy, direct_alice, direct
     check_id = contract.trigger_covenant_check(loan_id, covenant_id)
     check = contract.get_check(check_id)
     assert check["status"] == "COMPLIANT"
-    assert check["observed_value"] == pytest.approx(1.2)
+    # observed_value is a fixed-point decimal string (see _format_scaled in
+    # the contract) so a live-deployed view returning it survives GenVM's
+    # real calldata encoder, which rejects native Python float.
+    assert float(check["observed_value"]) == pytest.approx(1.2)
 
 
 def test_offchain_breach_check(direct_vm, direct_deploy, direct_alice, direct_bob):

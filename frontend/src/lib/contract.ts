@@ -76,7 +76,12 @@ export interface CovenantDict {
   source_ref: string;
   condition_field: string;
   operator: string;
-  threshold: number;
+  // Returned by the contract as a decimal STRING (e.g. "1.050000"), not a
+  // number — GenVM's real calldata encoder rejects native Python float,
+  // so get_covenant()/get_loan_covenants() return a fixed-point string
+  // instead (see _format_scaled in contracts/covenant_watch.py). Parse
+  // with Number()/parseFloat() where arithmetic is needed.
+  threshold: string;
   description: string;
   tier1_interest_step_up_bps: number;
   tier2_seizure_bps: number;
@@ -92,7 +97,8 @@ export interface CheckDict {
   snapshot_ts: number;
   snapshot_hash: string;
   status: "PENDING" | "COMPLIANT" | "BREACH" | "INCONCLUSIVE";
-  observed_value: number;
+  // Same string-not-number rationale as CovenantDict.threshold above.
+  observed_value: string;
   observed_note: string;
   result_source_hash: string;
   evaluated_at: number;

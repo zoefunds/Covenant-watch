@@ -150,6 +150,27 @@ TRIGGER_COOLDOWN_SECONDS: int = 15 * 60
 VALUE_SCALE: int = 1_000_000
 AGREEMENT_TOLERANCE_BPS: int = 200  # 2% relative tolerance band
 
+
+def _format_scaled(value: int) -> str:
+    """Render a VALUE_SCALE-scaled integer as a fixed-point decimal string.
+
+    @gl.public.view return values go through GenVM's real calldata encoder
+    on a live deployment, which — unlike the in-process direct-test
+    harness — rejects native Python float. `threshold`/`observed_value`
+    used to be returned as `int(...) / VALUE_SCALE` (a float); that passed
+    every direct-mode test (which never touches the real encoder) but
+    reverted with a bare "execution failed" on the actual deployed
+    contract for every view that returned one, including get_covenant and
+    get_loan_covenants. Returning a decimal string instead keeps full
+    precision and is encoder-safe; callers parse it with Number()/float().
+    """
+    negative = value < 0
+    value = abs(int(value))
+    whole, frac = divmod(value, VALUE_SCALE)
+    frac_digits = len(str(VALUE_SCALE)) - 1
+    sign = "-" if negative and (whole or frac) else ""
+    return f"{sign}{whole}.{str(frac).zfill(frac_digits)}"
+
 # ---- Consequence bounds -------------------------------------------------------
 MAX_INTEREST_STEP_UP_BPS: int = 5000     # cannot more than +50% interest in one tier
 MAX_TIER2_SEIZURE_BPS: int = 8000        # tier2 partial seizure cannot exceed 80%
@@ -1223,7 +1244,7 @@ Respond with ONLY a JSON object, no markdown, with exactly these keys:
             "source_ref": covenant.source_ref,
             "condition_field": covenant.condition_field,
             "operator": covenant.operator,
-            "threshold": int(covenant.threshold_scaled) / VALUE_SCALE,
+            "threshold": _format_scaled(int(covenant.threshold_scaled)),
             "description": covenant.description,
             "tier1_interest_step_up_bps": int(covenant.tier1_interest_step_up_bps),
             "tier2_seizure_bps": int(covenant.tier2_seizure_bps),
@@ -1240,7 +1261,7 @@ Respond with ONLY a JSON object, no markdown, with exactly these keys:
             "snapshot_ts": int(check.snapshot_ts),
             "snapshot_hash": check.snapshot_hash,
             "status": COVENANT_STATUS_NAMES.get(int(check.status), "UNKNOWN"),
-            "observed_value": int(check.observed_value_scaled) / VALUE_SCALE,
+            "observed_value": _format_scaled(int(check.observed_value_scaled)),
             "observed_note": check.observed_note,
             "result_source_hash": check.result_source_hash,
             "evaluated_at": int(check.evaluated_at),

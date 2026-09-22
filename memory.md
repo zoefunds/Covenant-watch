@@ -986,3 +986,57 @@ npm run lint     # verified passing in this session
 - CORS is currently locked to `https://covenant-watch.vercel.app` only;
   update `CORS_ALLOWED_ORIGINS` Fly secret if a custom domain is added
   later.
+
+## CRITICAL CONTRACT BUG FOUND AND FIXED (2026-09-22) — requires redeploy
+
+Root cause of "created loan doesn't show on the frontend": the live
+deployed contract (0x078485282E589a2cb43F6D3263753402045b7192) reverts
+with a bare "execution failed" on `get_covenant`, `get_loan_covenants`,
+`get_check`, and every other view that returns `threshold` or
+`observed_value`, because those fields were computed as
+`int(x) / VALUE_SCALE` — a native Python float. GenVM's real calldata
+encoder on a live deployment rejects float return values; the in-process
+direct-test harness does NOT exercise the real encoder, so this passed
+26/26 direct tests and was never caught until a real loan with real
+covenants existed on-chain to read back (the only account under test
+before now had `get_loan_count() == 0`).
+
+Confirmed empirically against the live contract:
+- `get_loan(0)` — succeeds (no float fields).
+- `get_covenant(0)`, `get_covenant(1)` — both fail with
+  `gen_call failed (code=-32000): execution failed`.
+- `get_loan_covenants(0)` — same failure (calls get_covenant internally).
+- Backend indexer's `/healthz` showed `indexer.state: "error"`,
+  `last_error: "gen_call failed (code=-32000): execution failed"` from
+  the moment the loan was created — sync stalled there and `/loans`
+  stayed `[]` forever after, which is exactly the reported symptom.
+
+**Fix applied** (contracts/covenant_watch.py): added `_format_scaled()`
+which renders a VALUE_SCALE-scaled integer as a fixed-point decimal
+STRING instead of dividing into a float. `_covenant_dict()`'s `threshold`
+and `_check_dict()`'s `observed_value` now go through it. Strings are
+calldata-encoder-safe. `genvm-lint check` still clean, direct tests still
+26 passed/1 skipped (one assertion updated to `float(check["observed_value"])`
+since it's now a string). Frontend `CovenantDict.threshold` and
+`CheckDict.observed_value` types changed `number` -> `string`; the two
+display sites already just interpolate the value in JSX with no
+arithmetic, so no further frontend changes were needed. `npm run build`
+verified clean.
+
+**This requires a contract REDEPLOY — GenLayer Intelligent Contracts are
+not upgradeable in place.** The currently deployed address
+(0x078485282E589a2cb43F6D3263753402045b7192) still has the float bug and
+cannot be patched; a new deployment gets a new address, and the one real
+loan already created on the old contract (loan id 0, principal 1000 GEN,
+2 covenants) will not exist on the new one — it is orphaned, not
+migrated. There is no funds-at-risk here since that loan's principal/
+collateral escrow was never actually funded past `create_loan` (borrower
+never locked collateral), but this should be communicated clearly, not
+silently dropped.
+
+**Next step**: user redeploys `contracts/covenant_watch.py` via their own
+`genlayer-cli`/Studio session (same command as the original deploy, see
+DEPLOYMENT.md section 1), then supplies the new `DEPLOYED_CONTRACT_ADDRESS`
+so it can be wired into `CONTRACT_ADDRESS` (backend Fly secret) and
+`NEXT_PUBLIC_CONTRACT_ADDRESS` (frontend Vercel env var + redeploy), same
+process as the first deployment.
