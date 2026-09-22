@@ -676,6 +676,35 @@ Assurance" dark design system as real Tailwind tokens (`src/app/globals.css`
 chrome, JetBrains Mono + `tabular-nums` for all onchain numeric/hash data,
 4px/8px radii, `1px solid #00F0FF` focus ring).
 
+### Reviewer/tester autofill (this session, 2026-09-22)
+
+Added a visibly-secondary "Fill sample data (for testing)" button (styled
+with the existing `Button variant="secondary"` — no new colors/classes) to
+every multi-field form a reviewer would otherwise hand-fill:
+
+- `/loans/new` — one click fills a realistic principal/collateral/interest,
+  a future maturity date, a valid challenge window
+  (`CHALLENGE_WINDOW_BOUNDS.default`), one ONCHAIN covenant
+  (`validator_signer_count >= 3`) and one OFFCHAIN covenant against the
+  real, genuinely fetchable `https://docs.genlayer.com/` with a specific,
+  non-vague condition — chosen because it's a real public GenLayer page
+  (not `example.com`/a placeholder domain) that the backend's SSRF-guarded
+  `/covenants/preview-source` and, eventually, the contract's own
+  `_evaluate_offchain` fetch can actually reach. All sample values were
+  checked against `validateCovenant`/`VAGUE_CONDITION_FRAGMENTS`/
+  `CHALLENGE_WINDOW_BOUNDS` in `src/lib/contract.ts` and pass client-side
+  validation as-is.
+- `/loans/[id]/covenants/[covenantId]/challenge` — fills a sample evidence
+  URL + note for the additive-evidence form.
+- The covenant-check/trigger page was left alone — it has no free-text
+  input beyond the real trigger button, so there was nothing to autofill.
+
+The button only ever sets client-side form state; it never fabricates a
+submission, a success state, or bypasses the real wallet-signing /
+`create_loan` / `submit_challenge_evidence` transaction — the reviewer
+still clicks the real submit button and goes through the real wallet flow.
+`npm run build` and `npm run lint` both pass clean after this change.
+
 ### Wallet connection: Reown (WalletConnect) AppKit
 
 Per an explicit mid-session instruction, wallet connection uses **Reown

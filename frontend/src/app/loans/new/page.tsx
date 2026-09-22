@@ -64,6 +64,43 @@ export default function NewLoanPage() {
     setCovenants((prev) => prev.map((c, idx) => (idx === i ? { ...c, ...patch } : c)));
   }
 
+  function fillSampleData() {
+    setFormError(null);
+    // Borrower is a counterparty distinct from the connected wallet, so this
+    // is a realistic-format example address, not a fabricated live one.
+    setBorrower("0x8f3a2Cc1B4e6D9057F1a1b2C3d4E5f60718293A4");
+    setPrincipalGen("1000");
+    setCollateralGen("1500");
+    setInterestBps(500);
+    const inSixWeeks = new Date(Date.now() + 42 * 24 * 60 * 60 * 1000);
+    setMaturityDate(inSixWeeks.toISOString().slice(0, 16));
+    setChallengeWindow(CHALLENGE_WINDOW_BOUNDS.default);
+    setCovenants([
+      {
+        ...EMPTY_COVENANT,
+        source_type: "ONCHAIN",
+        source_ref: "0x2b6C4f4A8d1E7b3F905c1A2b3C4d5E6f78901234",
+        condition_field: "validator_signer_count",
+        operator: ">=",
+        threshold: 3,
+        description: "Validator signer count reported by the source contract must stay at or above 3.",
+        tier1_interest_step_up_bps: 200,
+        tier2_seizure_bps: 2500,
+      },
+      {
+        ...EMPTY_COVENANT,
+        source_type: "OFFCHAIN",
+        source_ref: "https://docs.genlayer.com/",
+        condition_field: "documented_validator_count",
+        operator: ">=",
+        threshold: 4,
+        description: "The GenLayer docs page must report a documented validator count at or above 4.",
+        tier1_interest_step_up_bps: 150,
+        tier2_seizure_bps: 3000,
+      },
+    ]);
+  }
+
   async function previewCovenantUrl(i: number) {
     const c = covenants[i];
     if (c.source_type !== "OFFCHAIN" || !/^https?:\/\//.test(c.source_ref)) return;
@@ -156,12 +193,19 @@ export default function NewLoanPage() {
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
-      <h1 className="text-2xl font-semibold text-on-surface">Originate a loan</h1>
-      <p className="mt-1 text-sm text-on-surface-variant">
-        Defines principal, checkable covenants, and a graduated consequence schedule. This writes a real
-        <code className="mx-1 font-onchain text-xs">create_loan</code> transaction with the principal attached as
-        call value.
-      </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold text-on-surface">Originate a loan</h1>
+          <p className="mt-1 text-sm text-on-surface-variant">
+            Defines principal, checkable covenants, and a graduated consequence schedule. This writes a real
+            <code className="mx-1 font-onchain text-xs">create_loan</code> transaction with the principal attached as
+            call value.
+          </p>
+        </div>
+        <Button variant="secondary" onClick={fillSampleData} className="shrink-0">
+          Fill sample data <span className="text-on-surface-variant">(for testing)</span>
+        </Button>
+      </div>
 
       {!sessionAddress && (
         <div className="mt-6 rounded border border-secondary/40 bg-secondary-container/10 p-4 text-sm text-on-surface-variant">

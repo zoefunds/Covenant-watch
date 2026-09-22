@@ -112,11 +112,29 @@ export default function ChallengePage() {
       )}
 
       <Card className="mt-6">
-        <h2 className="text-sm font-semibold text-on-surface">Add evidence</h2>
-        <p className="mt-1 text-xs text-on-surface-variant">
-          Additive only — there is no way to edit or remove the original source or any prior evidence from this
-          form, by design.
-        </p>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold text-on-surface">Add evidence</h2>
+            <p className="mt-1 text-xs text-on-surface-variant">
+              Additive only — there is no way to edit or remove the original source or any prior evidence from this
+              form, by design.
+            </p>
+          </div>
+          {windowOpen && (
+            <Button
+              variant="secondary"
+              className="shrink-0"
+              onClick={() => {
+                setEvidenceUrl("https://docs.genlayer.com/core-concepts/consensus");
+                setEvidenceNote(
+                  "Independent source showing the current consensus/validator state at the time of this check, submitted for validator re-review."
+                );
+              }}
+            >
+              Fill sample data <span className="text-on-surface-variant">(for testing)</span>
+            </Button>
+          )}
+        </div>
         <div className="mt-4 space-y-4">
           <Field label="Evidence URL">
             <Input placeholder="https://…" value={evidenceUrl} onChange={(e) => setEvidenceUrl(e.target.value)} disabled={!windowOpen} />
