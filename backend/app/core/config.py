@@ -46,7 +46,17 @@ class Settings(BaseSettings):
     GENLAYER_RPC_URL: Optional[str] = Field(
         default=None, description="Override RPC URL; if unset, uses the network's default."
     )
-    INDEXER_POLL_INTERVAL_SECONDS: int = Field(default=8)
+    # 8s was far too aggressive: each sync pass makes 1 call just to check
+    # get_loan_count(), so even with zero loans that alone is ~450 calls/hr
+    # per running machine -- before counting per-loan/covenant/check calls
+    # or the frontend's own direct browser->RPC reads (which never touch
+    # this backend at all, so this budget can't see or limit them either).
+    # GenLayer's actual live rate limit -- confirmed from a real
+    # "Rate limit exceeded: 500 requests per hour" RPC error, NOT the
+    # 5000/hour figure this project was originally told -- is 500/hour,
+    # shared across everything this app's RPC key does. 60s keeps sustained
+    # idle polling under ~60 calls/hr per machine.
+    INDEXER_POLL_INTERVAL_SECONDS: int = Field(default=60)
     INDEXER_ENABLED: bool = Field(default=True)
 
     # --- Redis (distributed coordination: GenLayer RPC hourly budget +
@@ -55,10 +65,12 @@ class Settings(BaseSettings):
     # NEVER commit a real rediss:// URL (see .env.example). ---
     REDIS_URL: str = Field(default="redis://localhost:6379/0")
     GENLAYER_RPC_HOURLY_BUDGET: int = Field(
-        default=4000,
+        default=300,
         description="Hard cap on outbound genlayer-py RPC calls per rolling UTC hour, "
-        "shared across all backend instances via Redis. Kept comfortably under "
-        "GenLayer's account-wide 5000/hour limit.",
+        "shared across all backend instances via Redis. GenLayer's real limit "
+        "(confirmed live, not assumed) is 500/hour account-wide -- this stays "
+        "well under that with headroom for the frontend's own direct "
+        "browser->RPC reads, which this budget cannot see or count at all.",
     )
 
     # --- CORS ---

@@ -38,7 +38,7 @@ export function TxStatusPanel({ snap }: { snap: TxSnapshot }) {
         <p className="mt-2 text-xs text-on-surface-variant">
           Tx hash: <Mono className="break-all text-on-surface">{snap.hash}</Mono>{" "}
           <a
-            href={`${GENLAYER_EXPLORER_URL}?hash=${snap.hash}`}
+            href={`${GENLAYER_EXPLORER_URL.replace(/\/$/, "")}/tx/${snap.hash}`}
             target="_blank"
             rel="noreferrer"
             className="text-primary-container underline"

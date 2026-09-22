@@ -1058,3 +1058,60 @@ contract (one orphaned loan with unlocked collateral, no funds at risk),
 so a clean wipe was correct rather than trying to filter by address.
 `CONTRACT_ADDRESS` Fly secret and `NEXT_PUBLIC_CONTRACT_ADDRESS` Vercel
 env var both updated and redeployed.
+
+## RPC RATE LIMIT: real limit is 500/hr, not 5000/hr — fixed (2026-09-22)
+
+The Redis RPC-budget feature was built against a stated "5000 requests per
+hour" limit. The FIRST real loan-creation test against the fixed contract
+tripped GenLayer's actual live RPC error: `Rate limit exceeded: 500
+requests per hour`. The real limit is 10x tighter than what this project
+was told, and it is almost certainly shared across BOTH the backend's own
+calls AND the frontend's direct browser->RPC reads (genlayer-js talks to
+GenLayer's public RPC directly from the browser; those calls never touch
+this backend, so `GENLAYER_RPC_HOURLY_BUDGET` cannot see or limit them at
+all — a real blind spot worth knowing about).
+
+Root cause of the immediate incident: `INDEXER_POLL_INTERVAL_SECONDS`
+defaulted to **8 seconds**. Even with zero loans, one full sync pass
+still calls `get_loan_count()`, so idle polling alone cost ~450 calls/hr
+*per running machine* — and the app was running 2 machines (each with its
+own independent indexer loop), so idle baseline was already ~900/hr
+before a single loan existed. The moment a real loan+covenants existed,
+one sync burst (get_loan + get_loan_covenants + N*get_covenant +
+N*get_covenant_check_history) pushed it over 500/hr within minutes.
+
+**Fixed:**
+- `INDEXER_POLL_INTERVAL_SECONDS` default 8 -> 60 (code default in
+  `app/core/config.py` + `.env.example`, and set as a live Fly secret so
+  it took effect immediately without waiting for a redeploy).
+- `GENLAYER_RPC_HOURLY_BUDGET` default 4000 -> 300 (same two places +
+  live secret) -- comfortably under the real 500/hr ceiling with headroom
+  for the frontend's uncounted direct reads.
+- Fly machine count 2 -> 1 (`fly scale count 1`) so the indexer only runs
+  once, not twice in parallel. A single always-on machine still satisfies
+  the 24/7 requirement via Fly's auto-restart-on-crash and the existing
+  health check; it trades a small amount of resilience (a full Fly
+  region/host outage now takes the one machine down) for not doubling
+  RPC usage against a very tight real limit. Revisit if/when GenLayer
+  raises this app's limit.
+
+**Known follow-up, not fixed in this pass**: `run_sync_once()` advances
+`cursor.last_synced_loan_id` past a loan the FIRST time it's synced and
+never revisits it again -- so a loan's covenant/check/challenge state in
+the Postgres cache is captured once and never refreshed after that.
+Combined with the 60s poll interval this keeps RPC usage low, but it
+means the cache can go stale for a loan's *ongoing* activity (new checks,
+challenges, status changes) after its initial sync. This needs an
+incremental "re-poll active loans, skip terminal ones" design rather than
+a one-shot cursor -- flagging clearly rather than leaving it silently
+wrong. Frontend pages that need fresh state for an already-known loan
+should prefer a direct contract read over the backend cache until this is
+fixed (loan detail/check/challenge pages already do this correctly per
+the "cache is for history/lists, not fund-critical reads" pattern
+documented in `frontend/README.md`).
+
+## Explorer tx link fixed (2026-09-22)
+
+`TxStatusPanel.tsx` built explorer links as `{EXPLORER_URL}?hash={tx}`;
+the correct GenLayer StudioNet explorer route is `{EXPLORER_URL}/tx/{tx}`.
+Fixed.
