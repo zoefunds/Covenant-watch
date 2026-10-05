@@ -26,6 +26,52 @@ export interface TxSnapshot {
 const FAILURE_STATUSES = new Set(["CANCELED", "VALIDATORS_TIMEOUT", "LEADER_TIMEOUT", "UNDETERMINED"]);
 const DONE_STATUSES = new Set(["FINALIZED"]);
 
+const sleep = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+
+function enumName(raw: unknown, names: Record<string, string>): string | undefined {
+  if (raw === undefined || raw === null || raw === "") return undefined;
+  const value = String(raw);
+  return /^\d+$/.test(value) ? names[value] : value;
+}
+
+function executionResultOf(transaction: any): string | undefined {
+  return enumName(
+    transaction?.txExecutionResultName
+      ?? transaction?.txExecutionResult
+      ?? transaction?.tx_execution_result,
+    executionResultNumberToName as Record<string, string>
+  );
+}
+
+function executionErrorOf(transaction: any): string | undefined {
+  const consensus = transaction?.consensus_data ?? transaction?.consensusData;
+  const leader = consensus?.leader_receipt ?? consensus?.leaderReceipt;
+  const receipts = Array.isArray(leader) ? leader : leader ? [leader] : [];
+  for (const receipt of receipts) {
+    const detail = receipt?.genvm_result ?? receipt?.genvmResult ?? receipt?.error;
+    if (typeof detail === "string" && detail.trim()) return detail.trim().slice(0, 500);
+  }
+  return undefined;
+}
+
+/**
+ * A StudioNet transaction can become FINALIZED a few RPC reads before the
+ * consensus-data contract exposes txExecutionResult. Poll the transaction
+ * itself so that this short indexing delay is not misreported as a revert.
+ */
+async function waitForExecutionResult(client: any, hash: `0x${string}`, initialReceipt: any) {
+  let transaction = initialReceipt;
+  let executionResult = executionResultOf(transaction);
+
+  for (let attempt = 0; attempt < 20 && (!executionResult || executionResult === ExecutionResult.NOT_VOTED); attempt++) {
+    await sleep(1500);
+    transaction = await client.getTransaction({ hash });
+    executionResult = executionResultOf(transaction);
+  }
+
+  return { transaction, executionResult };
+}
+
 /**
  * Drives a write call through to a real terminal state, invoking onUpdate
  * with each intermediate phase so the UI can render submitted -> pending ->
@@ -63,9 +109,7 @@ export async function runTrackedWrite(
     // Prefer the SDK's decoded enum name; `status` may be the numeric on-chain
     // enum value (7 for FINALIZED) depending on provider/version.
     const rawStatus = (receipt as any)?.statusName ?? (receipt as any)?.status;
-    const statusName = typeof rawStatus === "number" || /^\d+$/.test(String(rawStatus))
-      ? transactionsStatusNumberToName[String(rawStatus) as keyof typeof transactionsStatusNumberToName]
-      : rawStatus;
+    const statusName = enumName(rawStatus, transactionsStatusNumberToName as Record<string, string>);
     if (statusName && FAILURE_STATUSES.has(statusName)) {
       const snap: TxSnapshot = { phase: "failed", hash, statusName, error: `Transaction ended in ${statusName}` };
       onUpdate(snap);
@@ -81,24 +125,22 @@ export async function runTrackedWrite(
       onUpdate(snap);
       return snap;
     }
-    const rawExecutionResult = (receipt as any)?.txExecutionResultName ?? (receipt as any)?.txExecutionResult;
-    const executionResult = typeof rawExecutionResult === "number" || /^\d+$/.test(String(rawExecutionResult))
-      ? executionResultNumberToName[String(rawExecutionResult) as keyof typeof executionResultNumberToName]
-      : rawExecutionResult;
+    const { transaction, executionResult } = await waitForExecutionResult(client, hash, receipt);
     if (executionResult !== ExecutionResult.FINISHED_WITH_RETURN) {
+      const executionError = executionErrorOf(transaction);
       const snap: TxSnapshot = {
         phase: "failed",
         hash,
         statusName,
-        result: receipt,
+        result: transaction,
         error: executionResult === ExecutionResult.FINISHED_WITH_ERROR
-          ? "Transaction finalized, but contract execution reverted. No state was changed."
-          : `Transaction finalized without a successful execution result (${executionResult || "unknown"}).`,
+          ? `Transaction finalized, but contract execution reverted. No state was changed.${executionError ? ` GenVM: ${executionError}` : ""}`
+          : "Transaction is finalized, but its execution result is not yet available from StudioNet. Refresh to read the finalized contract state; do not resubmit the transaction.",
       };
       onUpdate(snap);
       return snap;
     }
-    const snap: TxSnapshot = { phase: "finalized", hash, statusName, result: receipt };
+    const snap: TxSnapshot = { phase: "finalized", hash, statusName, result: transaction };
     onUpdate(snap);
     return snap;
   } catch (err: any) {
