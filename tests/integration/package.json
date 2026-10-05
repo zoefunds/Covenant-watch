@@ -1,0 +1,8 @@
+{
+  "name": "covenant-watch-live-integration",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "genlayer-js-v2": "npm:genlayer-js@2.0.0-rc.1"
+  }
+}

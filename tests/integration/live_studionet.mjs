@@ -2,6 +2,15 @@ import fs from "node:fs";
 import { createAccount, createClient, chains } from "../../frontend/node_modules/genlayer-js/dist/index.js";
 import { ExecutionResult, TransactionStatus } from "../../frontend/node_modules/genlayer-js/dist/types/index.js";
 import * as Keystore from "../../frontend/node_modules/ox/_esm/core/Keystore.js";
+// Contract calls stay on the v1 client because this deployed v1 contract's
+// calldata codec is not wire-compatible with v2.  v2 is used only for the
+// protocol-level appeal API, whose safe operation atomically quotes, funds,
+// and binds an appeal to the active consensus decision.
+import {
+  createAccount as createAppealAccount,
+  createClient as createAppealClient,
+  chains as appealChains,
+} from "./node_modules/genlayer-js-v2/dist/index.js";
 import keytar from "/opt/homebrew/lib/node_modules/genlayer/node_modules/keytar/lib/keytar.js";
 
 const address = process.env.CONTRACT_ADDRESS;
@@ -10,24 +19,36 @@ const borrowerKeystore = process.env.BORROWER_KEYSTORE;
 const password = process.env.KEYSTORE_PASSWORD;
 const sourceBases = (process.env.OFFCHAIN_BASE_URLS ?? "").split(",").filter(Boolean);
 const explicitSources = (process.env.SOURCE_URLS ?? "").split(",").filter(Boolean);
+const challengeSources = (process.env.CHALLENGE_SOURCE_URLS ?? "").split(",").filter(Boolean);
 const endpoint = process.env.GENLAYER_RPC_URL;
+const runChallenge = process.env.RUN_CHALLENGE === "1";
+const runAppeal = process.env.RUN_APPEAL === "1";
 
 if (!address || (sourceBases.length !== 3 && explicitSources.length !== 3)) {
   throw new Error("CONTRACT_ADDRESS and exactly three OFFCHAIN_BASE_URLS or SOURCE_URLS are required");
 }
+if (runChallenge && challengeSources.length !== 3) {
+  throw new Error("RUN_CHALLENGE=1 requires exactly three CHALLENGE_SOURCE_URLS");
+}
+if (runAppeal && !runChallenge) {
+  throw new Error("RUN_APPEAL=1 requires RUN_CHALLENGE=1 so the appeal covers the nondeterministic reevaluation");
+}
 
-const decryptAccount = async (path, accountName) => {
+const decryptKey = async (path, accountName) => {
   const key = path && password
     ? Keystore.decrypt(JSON.parse(fs.readFileSync(path, "utf8")), password)
     : await keytar.getPassword("genlayer-cli", `account:${accountName}`);
   if (!key) throw new Error(`GenLayer test account ${accountName} is not unlocked in the OS keychain`);
-  return createAccount(key);
+  return key;
 };
 
-const lender = await decryptAccount(lenderKeystore, process.env.LENDER_ACCOUNT ?? "cw-lender-e2e");
-const borrower = await decryptAccount(borrowerKeystore, process.env.BORROWER_ACCOUNT ?? "cw-borrower-e2e");
+const lenderKey = await decryptKey(lenderKeystore, process.env.LENDER_ACCOUNT ?? "cw-lender-e2e");
+const borrowerKey = await decryptKey(borrowerKeystore, process.env.BORROWER_ACCOUNT ?? "cw-borrower-e2e");
+const lender = createAccount(lenderKey);
+const borrower = createAccount(borrowerKey);
 const lenderClient = createClient({ chain: chains.studionet, account: lender, ...(endpoint ? { endpoint } : {}) });
 const borrowerClient = createClient({ chain: chains.studionet, account: borrower, ...(endpoint ? { endpoint } : {}) });
+const lenderAppealClient = createAppealClient({ chain: appealChains.studionet, account: createAppealAccount(lenderKey) });
 
 const requireSuccess = async (client, hash, label) => {
   const receipt = await client.waitForTransactionReceipt({
@@ -59,6 +80,32 @@ const requireSuccess = async (client, hash, label) => {
 const write = async (client, functionName, args = [], value = 0n) => {
   const hash = await client.writeContract({ address, functionName, args, value });
   return requireSuccess(client, hash, functionName);
+};
+
+const waitForAccepted = async (client, hash, label) => {
+  for (let attempt = 0; attempt < 90; attempt += 1) {
+    const tx = await client.getTransaction({ hash });
+    const status = tx.statusName ?? tx.status_name ?? tx.status;
+    if (status === "ACCEPTED" || status === 5) return tx;
+    if (status === "FINALIZED" || status === 7) {
+      throw new Error(`${label} finalized before an appeal could be submitted`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+  throw new Error(`timed out waiting for ${label} to become appealable`);
+};
+
+const writeAndAppeal = async (client, functionName, args = [], value = 0n) => {
+  const hash = await client.writeContract({ address, functionName, args, value });
+  await waitForAccepted(client, hash, functionName);
+  const charge = await lenderAppealClient.getAppealCharge({ txId: hash });
+  const cap = process.env.MAX_APPEAL_CHARGE_WEI;
+  if (cap !== undefined && charge > BigInt(cap)) {
+    throw new Error(`appeal charge ${charge} exceeds MAX_APPEAL_CHARGE_WEI=${cap}`);
+  }
+  await lenderAppealClient.appealTransaction({ txId: hash, value: charge });
+  const finalized = await requireSuccess(client, hash, `${functionName} (appealed)`);
+  return { finalized, appealCharge: charge };
 };
 
 const read = (client, functionName, args = []) =>
@@ -122,8 +169,33 @@ const checkHistory = await waitFor(
   (history) => history.length > 0,
 );
 const checkId = Number(checkHistory[checkHistory.length - 1].id);
-const check = await read(lenderClient, "get_check", [checkId]);
-if (check.status !== "COMPLIANT" || check.finalized !== true) {
+let check = await read(lenderClient, "get_check", [checkId]);
+let challengeReceipt;
+let appealCharge = 0n;
+
+if (runChallenge) {
+  if (check.status !== "BREACH" || check.finalized === true || Number(check.challenge_window_ends_at) <= 0) {
+    throw new Error(`initial challenge fixture did not produce an open BREACH: ${JSON.stringify(check)}`);
+  }
+  const initialSourceHash = check.result_source_hash;
+  for (let index = 0; index < challengeSources.length; index += 1) {
+    const args = [loanId, checkId, challengeSources[index], `Independent publisher ${index + 1} corroborates the corrected value.`];
+    if (index === challengeSources.length - 1 && runAppeal) {
+      const appealed = await writeAndAppeal(lenderClient, "submit_challenge_evidence", args);
+      challengeReceipt = appealed.finalized;
+      appealCharge = appealed.appealCharge;
+    } else {
+      challengeReceipt = await write(lenderClient, "submit_challenge_evidence", args);
+    }
+  }
+  check = await read(lenderClient, "get_check", [checkId]);
+  if (check.status !== "COMPLIANT" || check.finalized !== true || Number(check.challenge_count) !== 3) {
+    throw new Error(`challenge did not overturn the breach with a finalized compliant result: ${JSON.stringify(check)}`);
+  }
+  if (check.result_source_hash === initialSourceHash) {
+    throw new Error("challenge reevaluation did not bind a distinct evidence-source hash");
+  }
+} else if (check.status !== "COMPLIANT" || check.finalized !== true) {
   throw new Error(`live covenant check was not compliant and finalized: ${JSON.stringify(check)}`);
 }
 if (!String(check.observed_note).includes("2/3") && !String(check.observed_note).includes("3/3")) {
@@ -134,6 +206,11 @@ const votes = triggerReceipt?.consensusData?.votes ?? triggerReceipt?.consensus_
 const agreeing = Object.values(votes).filter((vote) => String(vote).toLowerCase() === "agree").length;
 if (triggerReceipt && agreeing < 2) {
   throw new Error(`expected genuine multi-validator agreement, got ${JSON.stringify(votes)}`);
+}
+const challengeVotes = challengeReceipt?.consensusData?.votes ?? challengeReceipt?.consensus_data?.votes ?? {};
+const challengeAgreeing = Object.values(challengeVotes).filter((vote) => String(vote).toLowerCase() === "agree").length;
+if (runChallenge && challengeAgreeing < 2) {
+  throw new Error(`expected genuine multi-validator agreement on challenge reevaluation, got ${JSON.stringify(challengeVotes)}`);
 }
 
 loan = await read(lenderClient, "get_loan", [loanId]);
@@ -164,5 +241,12 @@ console.log(JSON.stringify({
   observedValue: check.observed_value,
   observedNote: check.observed_note,
   agreeingValidators: agreeing,
+  challenge: runChallenge ? {
+    overturnedBreach: true,
+    evidencePublishers: Number(check.challenge_count),
+    agreeingValidators: challengeAgreeing,
+    appealed: runAppeal,
+    appealCharge: appealCharge.toString(),
+  } : undefined,
   finalLoanStatus: finalLoan.status,
 }));
