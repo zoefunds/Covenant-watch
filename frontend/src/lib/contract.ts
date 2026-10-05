@@ -163,6 +163,7 @@ export const getCovenantCheckHistory = (covenantId: number) =>
 export const getChallengeState = (checkId: number) => read<any>("get_challenge_state", [checkId]);
 export const getLoanCount = () => read<number>("get_loan_count", []);
 export const getCurrentTime = () => read<number>("get_current_time", []);
+export const canClaimPrincipal = (loanId: number) => read<boolean>("can_claim_principal", [loanId]);
 export async function listLiveLoans(): Promise<any[]> {
   const count = Number(await getLoanCount());
   const loans: any[] = [];

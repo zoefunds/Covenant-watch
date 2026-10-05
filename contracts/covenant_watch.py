@@ -606,6 +606,30 @@ class CovenantWatch(gl.Contract):
             raise gl.vm.UserError(ERR_EXPECTED + f"check {check_id} does not exist")
         return check
 
+    def _principal_claim_ready(self, loan_id: int) -> bool:
+        """Every covenant must have a latest, finalized COMPLIANT result.
+
+        This is contract state, not a frontend convention: collateral alone
+        never authorizes the borrower to draw escrowed principal.
+        """
+        covenant_ids = self.loan_covenant_ids.get(u32(loan_id))
+        if covenant_ids is None or len(covenant_ids) == 0:
+            return False
+        for covenant_id in covenant_ids:
+            covenant = self._get_covenant(int(covenant_id))
+            check_id = int(covenant.last_check_id)
+            if check_id < 0:
+                return False
+            check = self._get_check(check_id)
+            if (
+                int(check.loan_id) != loan_id
+                or int(check.covenant_id) != int(covenant_id)
+                or not bool(check.finalized)
+                or int(check.status) != COVENANT_COMPLIANT
+            ):
+                return False
+        return True
+
     def _only_party(self, loan: Loan) -> Address:
         sender = gl.message.sender_address
         _require(sender == loan.lender or sender == loan.borrower,
@@ -1144,13 +1168,16 @@ Respond with ONLY a JSON object, no markdown, with exactly these keys:
     @gl.public.write
     def claim_principal(self, loan_id: int) -> None:
         """Pull-based draw of the escrowed principal by the borrower, once
-        collateral is locked. Zero-then-transfer ordering."""
+        collateral is locked and every covenant's latest check is finalized
+        COMPLIANT. Zero-then-transfer ordering."""
         loan = self._get_loan(loan_id)
         sender = gl.message.sender_address
         _require(sender == loan.borrower, "only the borrower may claim the principal")
         _require(int(loan.status) in (LOAN_ACTIVE, LOAN_BREACH_TIER1, LOAN_BREACH_TIER2),
                   "principal can only be claimed while the loan is active")
         _require(not bool(loan.principal_claimed), "principal already claimed")
+        _require(self._principal_claim_ready(loan_id),
+                 "all covenants require a latest finalized COMPLIANT check before principal claim")
 
         amount = int(loan.principal_deposited)
         _require(amount > 0, "no principal to claim")
@@ -1601,6 +1628,12 @@ Respond with ONLY a JSON object, no markdown, with exactly these keys:
     def get_current_time(self) -> int:
         """Consensus clock for frontend countdown synchronization."""
         return self._now_ts()
+
+    @gl.public.view
+    def can_claim_principal(self, loan_id: int) -> bool:
+        """Whether covenant checks currently authorize the principal draw."""
+        self._get_loan(loan_id)
+        return self._principal_claim_ready(loan_id)
 
     @gl.public.view
     def get_cooldown_remaining(self, loan_id: int, covenant_id: int, address: str) -> int:

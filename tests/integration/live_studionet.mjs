@@ -110,10 +110,6 @@ if (loan.status === "CREATED") {
   await write(borrowerClient, "lock_collateral", [loanId], collateral);
   loan = await read(lenderClient, "get_loan", [loanId]);
 }
-if (!loan.principal_claimed) {
-  await write(borrowerClient, "claim_principal", [loanId]);
-}
-
 const priorChecks = await read(lenderClient, "get_check_history", [loanId]);
 let triggerReceipt;
 if (priorChecks.length === 0) {
@@ -141,6 +137,12 @@ if (triggerReceipt && agreeing < 2) {
 }
 
 loan = await read(lenderClient, "get_loan", [loanId]);
+if (!loan.principal_claimed) {
+  const drawReady = await read(lenderClient, "can_claim_principal", [loanId]);
+  if (drawReady !== true) throw new Error(`principal draw was not enabled after finalized compliant checks`);
+  await write(borrowerClient, "claim_principal", [loanId]);
+  loan = await read(lenderClient, "get_loan", [loanId]);
+}
 if (loan.status !== "REPAID") {
   const totalDue = principal + (principal * BigInt(loan.current_interest_bps)) / 10_000n;
   await write(borrowerClient, "repay_loan", [loanId], totalDue);

@@ -20,6 +20,7 @@ import {
   getLoan,
   getLoanCovenants,
   getCheckHistory,
+  canClaimPrincipal,
   LoanDict,
   CovenantDict,
   CheckDict,
@@ -51,6 +52,7 @@ export default function LoanDetailPage() {
   const [snap, setSnap] = useState<TxSnapshot>({ phase: "idle" });
   const [activeAction, setActiveAction] = useState<string | null>(null);
   const [completedActions, setCompletedActions] = useState<Set<string>>(new Set());
+  const [principalClaimReady, setPrincipalClaimReady] = useState(false);
 
   const reload = useCallback(async (direct = false) => {
     setError(null);
@@ -74,6 +76,8 @@ export default function LoanDetailPage() {
           getCheckHistory(loanId),
         ]);
       }
+      const drawReady = Boolean(await canClaimPrincipal(loanId));
+      setPrincipalClaimReady(drawReady);
       setLoan({
         id: l.chain_loan_id ?? l.id,
         lender: l.lender_address ?? l.lender,
@@ -228,9 +232,23 @@ export default function LoanDetailPage() {
             </Button>
           )}
           {isBorrower && ["ACTIVE", "BREACH_TIER1", "BREACH_TIER2"].includes(loan.status) && !loan.principal_claimed && (
-            <Button onClick={() => act("claim-principal", () => claimPrincipal(signer!, loan.id))} disabled={actionDisabled("claim-principal")}>
-              {completedActions.has("claim-principal") ? "Principal claimed" : "Claim principal"}
-            </Button>
+            <div className="flex flex-col gap-1">
+              <Button
+                onClick={() => act("claim-principal", () => claimPrincipal(signer!, loan.id))}
+                disabled={actionDisabled("claim-principal") || !principalClaimReady}
+              >
+                {completedActions.has("claim-principal")
+                  ? "Principal claimed"
+                  : principalClaimReady
+                    ? "Claim principal"
+                    : "Complete covenant checks first"}
+              </Button>
+              {!principalClaimReady && (
+                <span className="max-w-64 text-xs text-on-surface-variant">
+                  Every covenant needs a latest finalized COMPLIANT check before the contract permits this draw.
+                </span>
+              )}
+            </div>
           )}
           {isLender && loan.status === "CREATED" && (
             <Button variant="secondary" onClick={() => act("cancel", () => cancelLoan(signer!, loan.id))} disabled={actionDisabled("cancel")}>

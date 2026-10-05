@@ -92,6 +92,9 @@ never double-spend:
 
 - `claim_principal` / `claim_settlement` are pull-based withdrawals of a
   `claimable_*_wei` ledger field.
+- `claim_principal` is unavailable until every covenant's latest check is
+  finalized `COMPLIANT`; `can_claim_principal` exposes the same contract-owned
+  readiness rule to the frontend.
 - `TERMS` fields (`principal_wei`, `collateral_wei`) are immutable once set;
   only the separate `LEDGER` fields (`principal_deposited`,
   `collateral_deposited`, `claimable_lender_wei`, `claimable_borrower_wei`)
@@ -109,11 +112,11 @@ never double-spend:
 | Frontend | https://covenant-watch.vercel.app |
 | Backend API | https://covenant-watch-api.fly.dev |
 | Backend health | https://covenant-watch-api.fly.dev/healthz |
-| Contract address | `0x5c3Fe893aaaa9C0416F76812c3903Cf4AfA528A7` |
+| Contract address | `0xcabD9990BdC2B45f22C60b4Ea519041e42c3E980` |
 | Network | GenLayer StudioNet |
 | Explorer | https://explorer-studio.genlayer.com/ |
 
-The verified production-gate run finalized loan `2` with a `COMPLIANT`
+The verified production-gate run finalized loan `0` with a `COMPLIANT`
 result at `21000000.000000`, 3/3 independent publishers, three agreeing
 execution validators, repayment, and both settlement claims. See
 [`AUDIT.md`](./AUDIT.md) for findings and proof, [`DEPLOYMENT.md`](./DEPLOYMENT.md) for the full deploy runbook
@@ -202,7 +205,7 @@ cd frontend
 npm install
 cp .env.example .env.local
 # .env.local's defaults already point at the live deployed contract
-# (0x5c3Fe893aaaa9C0416F76812c3903Cf4AfA528A7, studionet) and a working
+# (0xcabD9990BdC2B45f22C60b4Ea519041e42c3E980, studionet) and a working
 # Reown project id for wallet connection
 
 npm run dev      # requires Node >=20.9

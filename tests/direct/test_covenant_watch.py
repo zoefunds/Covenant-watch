@@ -325,6 +325,14 @@ def _setup_breach_tier_loan(direct_vm, direct_deploy, direct_alice, direct_bob,
     return contract, loan_id, covenant_id
 
 
+def _authorize_principal_draw(direct_vm, contract, loan_id, covenant_ids, lender):
+    """Give every covenant a latest finalized COMPLIANT result."""
+    direct_vm.sender = lender
+    for covenant_id in covenant_ids:
+        mock_offchain_verdict(direct_vm, status="COMPLIANT", value=1.2)
+        contract.trigger_covenant_check(loan_id, covenant_id)
+
+
 def test_compliant_check(direct_vm, direct_deploy, direct_alice, direct_bob):
     contract, loan_id, covenant_id = _setup_breach_tier_loan(direct_vm, direct_deploy, direct_alice, direct_bob)
     mock_offchain_verdict(direct_vm, status="COMPLIANT", value=1.2)
@@ -659,8 +667,46 @@ def test_cannot_challenge_after_window_closes(direct_vm, direct_deploy, direct_a
 # Double-claim / double-payout prevention
 # ---------------------------------------------------------------------------
 
+def test_principal_claim_requires_latest_compliant_check_for_every_covenant(
+    direct_vm, direct_deploy, direct_alice, direct_bob,
+):
+    contract = direct_deploy(CONTRACT_PATH)
+    covenants = [
+        offchain_covenant(url="https://one.example.org/first"),
+        offchain_covenant(url="https://four.example.org/second"),
+    ]
+    # Keep every URL distinct within the second source set.
+    covenants[1]["source_refs"] = [
+        "https://four.example.org/second",
+        "https://five.example.org/second",
+        "https://six.example.org/second",
+    ]
+    loan_id = _create_basic_loan(direct_vm, contract, direct_alice, direct_bob, covenants)
+    direct_vm.sender = direct_bob
+    direct_vm.value = 2_000_000
+    contract.lock_collateral(loan_id)
+    direct_vm.value = 0
+    covenant_ids = [item["id"] for item in contract.get_loan_covenants(loan_id)]
+
+    assert contract.can_claim_principal(loan_id) is False
+    with direct_vm.expect_revert():
+        contract.claim_principal(loan_id)
+
+    _authorize_principal_draw(direct_vm, contract, loan_id, covenant_ids[:1], direct_alice)
+    assert contract.can_claim_principal(loan_id) is False
+    direct_vm.sender = direct_bob
+    with direct_vm.expect_revert():
+        contract.claim_principal(loan_id)
+
+    _authorize_principal_draw(direct_vm, contract, loan_id, covenant_ids[1:], direct_alice)
+    assert contract.can_claim_principal(loan_id) is True
+    direct_vm.sender = direct_bob
+    contract.claim_principal(loan_id)
+    assert contract.get_loan(loan_id)["principal_claimed"] is True
+
 def test_double_claim_principal_prevented(direct_vm, direct_deploy, direct_alice, direct_bob):
     contract, loan_id, covenant_id = _setup_breach_tier_loan(direct_vm, direct_deploy, direct_alice, direct_bob)
+    _authorize_principal_draw(direct_vm, contract, loan_id, [covenant_id], direct_alice)
     direct_vm.sender = direct_bob
     contract.claim_principal(loan_id)
     with direct_vm.expect_revert():
@@ -668,7 +714,8 @@ def test_double_claim_principal_prevented(direct_vm, direct_deploy, direct_alice
 
 
 def test_repayment_requires_exact_amount(direct_vm, direct_deploy, direct_alice, direct_bob):
-    contract, loan_id, _ = _setup_breach_tier_loan(direct_vm, direct_deploy, direct_alice, direct_bob)
+    contract, loan_id, covenant_id = _setup_breach_tier_loan(direct_vm, direct_deploy, direct_alice, direct_bob)
+    _authorize_principal_draw(direct_vm, contract, loan_id, [covenant_id], direct_alice)
     direct_vm.sender = direct_bob
     contract.claim_principal(loan_id)
     # principal 1,000,000 plus 5% interest = 1,050,000; no partial payment
@@ -744,9 +791,10 @@ def test_lender_activity_cannot_extend_fixed_maturity_grace(direct_vm, direct_de
 def test_drawn_unpaid_matured_loan_defaults_to_lender(direct_vm, direct_deploy, direct_alice, direct_bob):
     import datetime as _dt
     maturity = int(_dt.datetime.fromisoformat(direct_vm._datetime.replace("Z", "+00:00")).timestamp()) + DAY
-    contract, loan_id, _ = _setup_breach_tier_loan(
+    contract, loan_id, covenant_id = _setup_breach_tier_loan(
         direct_vm, direct_deploy, direct_alice, direct_bob, maturity_ts=maturity,
     )
+    _authorize_principal_draw(direct_vm, contract, loan_id, [covenant_id], direct_alice)
     direct_vm.sender = direct_bob
     contract.claim_principal(loan_id)
     warp_seconds(direct_vm, 15 * DAY)
@@ -765,9 +813,10 @@ def test_drawn_unpaid_matured_loan_defaults_to_lender(direct_vm, direct_deploy, 
 def test_legacy_reclaim_cannot_reward_nonpaying_borrower(direct_vm, direct_deploy, direct_alice, direct_bob):
     import datetime as _dt
     maturity = int(_dt.datetime.fromisoformat(direct_vm._datetime.replace("Z", "+00:00")).timestamp()) + DAY
-    contract, loan_id, _ = _setup_breach_tier_loan(
+    contract, loan_id, covenant_id = _setup_breach_tier_loan(
         direct_vm, direct_deploy, direct_alice, direct_bob, maturity_ts=maturity,
     )
+    _authorize_principal_draw(direct_vm, contract, loan_id, [covenant_id], direct_alice)
     direct_vm.sender = direct_bob
     contract.claim_principal(loan_id)
     warp_seconds(direct_vm, 15 * DAY)

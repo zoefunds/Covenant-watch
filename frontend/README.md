@@ -78,7 +78,9 @@ remains a failure — never a `setTimeout` standing in for real status.
 - `/loans/[id]` — loan detail and every lifecycle action (lock collateral,
   claim principal, repay, cancel, permissionless maturity settlement, claim
   settlement), each gated by contract state, with contract-clock-synchronized
-  countdowns and finalized one-shot actions disabled. Drawn/unpaid loans
+  countdowns and finalized one-shot actions disabled. Principal claim remains
+  disabled until `can_claim_principal` confirms every covenant's latest check
+  is finalized `COMPLIANT`. Drawn/unpaid loans
   default after maturity grace; undrawn loans unwind both escrows.
 - `/loans/[id]/covenants/[covenantId]/check` — trigger a covenant check
   (respecting the real on-chain cooldown via `get_cooldown_remaining`),
@@ -117,7 +119,7 @@ URL, and WalletConnect project id, nothing secret.
 npm install
 cp .env.example .env.local
 # defaults already point at the live deployed contract
-# (0x5c3Fe893aaaa9C0416F76812c3903Cf4AfA528A7, studionet) and a working
+# (0xcabD9990BdC2B45f22C60b4Ea519041e42c3E980, studionet) and a working
 # Reown project id — only NEXT_PUBLIC_BACKEND_URL needs to match wherever
 # you're running backend/ (default http://localhost:8000)
 

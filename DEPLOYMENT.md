@@ -7,14 +7,15 @@ Last verified: 2026-10-05.
 | Component | Value |
 |---|---|
 | Network | GenLayer StudioNet |
-| Contract | `0x5c3Fe893aaaa9C0416F76812c3903Cf4AfA528A7` |
-| Contract deploy tx | `0x7846dfbfac2d37fd5b2b3938f3620df1cb3e6650193ef5e1e4326e7aadc1a039` |
+| Contract | `0xcabD9990BdC2B45f22C60b4Ea519041e42c3E980` |
+| Contract deploy tx | `0x3d217c7937e857e77f31cd9b5a087f2050d4ec40ee7c61b84a2a5c283ef4f374` |
 | Frontend | https://covenant-watch.vercel.app |
 | Vercel project | `covenant-watch` |
 | Backend | https://covenant-watch-api.fly.dev |
 | Fly app | `covenant-watch-api` |
 
-The deploy transaction is `FINALIZED`; its five validators all voted `AGREE`.
+The deploy transaction is `FINALIZED`; three validators voted `AGREE` to reach
+quorum and the remaining two were `IDLE`.
 
 ## 1. Verify source before deployment
 
@@ -25,7 +26,7 @@ cd frontend && npm run lint && npx tsc --noEmit && npm run build -- --webpack &&
 git diff --check
 ```
 
-Expected baseline: 37 contract tests and 17 backend tests pass. The webpack
+Expected baseline: 38 contract tests and 17 backend tests pass. The webpack
 build currently emits non-fatal optional Reown/Wagmi connector-resolution
 warnings but must complete and emit every route.
 
@@ -48,7 +49,7 @@ genlayer code <contract-address>
 genlayer call <contract-address> get_loan_count
 ```
 
-The schema must expose 21 public methods: 11 writes and 10 views. The installed
+The schema must expose 22 public methods: 11 writes and 11 views. The installed
 CLI does not expose payable call value on `genlayer write`, so use the included
 Node harness—not a value-less CLI write—to test escrow.
 
@@ -85,7 +86,7 @@ If direct Node/Python TLS calls to StudioNet fail with
 Success must include a finalized `COMPLIANT` check, 2/3 or 3/3 publisher
 quorum, genuine validator agreement, terminal `REPAID`, and zero remaining
 claimable balances. The verified production run achieved 3/3 publisher
-corroboration on loan `2` with observed value `21000000.000000`.
+corroboration on loan `0` with observed value `21000000.000000`.
 
 Avoid using cryptocurrency JSON API endpoints as evidence until the current
 GenVM renderer issue is resolved. One live attempt crashed in the GenVM host

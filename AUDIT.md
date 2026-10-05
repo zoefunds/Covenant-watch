@@ -38,8 +38,9 @@ Date: 2026-10-05
 - Successful one-shot actions are disabled immediately to prevent duplicate
   submissions while refreshed chain state propagates.
 - Covenant checks require an active collateralized loan; expired offers cannot
-  lock collateral; principal cannot be claimed from a terminal loan; repayment
-  requires that principal was drawn.
+  lock collateral. Principal remains escrowed until every covenant's latest
+  check is finalized `COMPLIANT`; the contract enforces this independently of
+  the frontend. Repayment requires that principal was drawn.
 - Breach tiers advance across the whole loan, including breaches of different
   covenants. Default and timeout return any undrawn principal to the lender.
 - Terminal loans ignore stale pending consequences, exact repayment prevents
@@ -59,7 +60,7 @@ Date: 2026-10-05
 
 ## Verification
 
-- Contract direct suite: 37 passed.
+- Contract direct suite: 38 passed.
 - Backend suite: 17 passed.
 - Frontend ESLint: passed.
 - Frontend TypeScript (`tsc --noEmit`): passed.
@@ -71,8 +72,8 @@ Date: 2026-10-05
 - The five-validator GLSim launcher was repaired for the current SDK's
   version-isolated contract registries. Repeated deployments now finalize
   without cross-contract class contamination.
-- StudioNet deployment `0x5c3Fe893aaaa9C0416F76812c3903Cf4AfA528A7`
-  finalized with five agreeing validators. A live escrow lifecycle on loan 2
+- StudioNet deployment `0xcabD9990BdC2B45f22C60b4Ea519041e42c3E980`
+  finalized with validator consensus. A live escrow lifecycle on loan 0
   finalized a `COMPLIANT` check at `21000000.000000`, corroborated 3/3
   independent publishers with three agreeing execution validators, then
   repaid and claimed both settlement balances successfully.
