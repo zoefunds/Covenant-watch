@@ -3,7 +3,7 @@
 
 // Contract used by the current frontend deployment.
 export const CONTRACT_ADDRESS = (process.env.NEXT_PUBLIC_CONTRACT_ADDRESS ||
-  "0xcabD9990BdC2B45f22C60b4Ea519041e42c3E980") as `0x${string}`;
+  "0xdDB5B5c8Ea31B8b81e9c66D1d8595CADfc2d0954") as `0x${string}`;
 
 // "studionet" is the network this project's contract is actually deployed
 // on (see memory.md). Kept configurable so a user who redeploys elsewhere

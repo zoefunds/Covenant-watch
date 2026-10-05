@@ -72,7 +72,7 @@ Date: 2026-10-05
 - The five-validator GLSim launcher was repaired for the current SDK's
   version-isolated contract registries. Repeated deployments now finalize
   without cross-contract class contamination.
-- StudioNet deployment `0xcabD9990BdC2B45f22C60b4Ea519041e42c3E980`
+- StudioNet deployment `0xdDB5B5c8Ea31B8b81e9c66D1d8595CADfc2d0954`
   finalized with validator consensus. A live escrow lifecycle on loan 0
   finalized a `COMPLIANT` check at `21000000.000000`, corroborated 3/3
   independent publishers with three agreeing execution validators, then

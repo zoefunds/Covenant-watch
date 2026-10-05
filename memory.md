@@ -11,8 +11,8 @@ Git history when an older implementation record is needed.
 | Component | Current value |
 |---|---|
 | GenLayer network | StudioNet |
-| Audited contract | `0xcabD9990BdC2B45f22C60b4Ea519041e42c3E980` |
-| Deployment transaction | `0x3d217c7937e857e77f31cd9b5a087f2050d4ec40ee7c61b84a2a5c283ef4f374` |
+| Audited contract | `0xdDB5B5c8Ea31B8b81e9c66D1d8595CADfc2d0954` |
+| Deployment transaction | `0x174bd3b3f36ad0d79bffa0a279ecbaed365cda9c5ed5c41560d2404ba9deba91` |
 | Frontend | https://covenant-watch.vercel.app |
 | Vercel project | `covenant-watch` |
 | Backend | https://covenant-watch-api.fly.dev |
