@@ -16,6 +16,7 @@ export type SourceType = "ONCHAIN" | "OFFCHAIN";
 export interface CovenantInput {
   source_type: SourceType;
   source_ref: string;
+  source_refs?: string[];
   condition_field: string;
   operator: ">=" | "<=" | ">" | "<" | "==";
   threshold: number;
@@ -42,6 +43,7 @@ export const VAGUE_CONDITION_FRAGMENTS = [
 
 export const CHALLENGE_WINDOW_BOUNDS = { min: 6 * 60 * 60, max: 7 * 24 * 60 * 60, default: 48 * 60 * 60 };
 export const MAX_COVENANTS_PER_LOAN = 8;
+export const MATURITY_GRACE_SECONDS = 14 * 24 * 60 * 60;
 
 // Field shapes below mirror _loan_dict/_covenant_dict/_check_dict in
 // contracts/covenant_watch.py EXACTLY (status fields are already the
@@ -74,6 +76,7 @@ export interface CovenantDict {
   loan_id: number;
   source_type: SourceType;
   source_ref: string;
+  source_refs: string[];
   condition_field: string;
   operator: string;
   // Returned by the contract as a decimal STRING (e.g. "1.050000"), not a
@@ -96,6 +99,7 @@ export interface CheckDict {
   triggered_by: string;
   snapshot_ts: number;
   snapshot_hash: string;
+  pinned_source_hash?: string;
   status: "PENDING" | "COMPLIANT" | "BREACH" | "INCONCLUSIVE";
   // Same string-not-number rationale as CovenantDict.threshold above.
   observed_value: string;
@@ -158,6 +162,25 @@ export const getCovenantCheckHistory = (covenantId: number) =>
   read<CheckDict[]>("get_covenant_check_history", [covenantId]);
 export const getChallengeState = (checkId: number) => read<any>("get_challenge_state", [checkId]);
 export const getLoanCount = () => read<number>("get_loan_count", []);
+export const getCurrentTime = () => read<number>("get_current_time", []);
+export async function listLiveLoans(): Promise<any[]> {
+  const count = Number(await getLoanCount());
+  const loans: any[] = [];
+  for (let id = 0; id < count; id++) {
+    const loan = await getLoan(id);
+    if (loan) {
+      // Match the backend list shape so the UI can safely use either source.
+      loans.push({
+        ...loan,
+        chain_loan_id: loan.id,
+        lender_address: loan.lender,
+        borrower_address: loan.borrower,
+        interest_bps: loan.current_interest_bps,
+      });
+    }
+  }
+  return loans;
+}
 export const getCooldownRemaining = (loanId: number, covenantId: number, address: string) =>
   read<number>("get_cooldown_remaining", [loanId, covenantId, address]);
 
@@ -203,6 +226,9 @@ export const repayLoan = (signer: Signer, loanId: number, amountWei: bigint) =>
 
 export const reclaimCollateralTimeout = (signer: Signer, loanId: number) =>
   write(signer, "reclaim_collateral_timeout", [loanId]);
+
+export const settleMaturedLoan = (signer: Signer, loanId: number) =>
+  write(signer, "settle_matured_loan", [loanId]);
 
 export const cancelLoan = (signer: Signer, loanId: number) => write(signer, "cancel_loan", [loanId]);
 

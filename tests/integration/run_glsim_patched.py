@@ -37,13 +37,33 @@ def _patch_loader() -> None:
 
     _orig_load_contract_class = _loader.load_contract_class
 
-    def _reset_known_contract_and_load(contract_path, vm, sdk_version=None):
+    def _clear_contract_registries() -> None:
+        # SDK releases have used both spellings, and version-isolated SDK
+        # modules are not guaranteed to be registered under the canonical
+        # ``genlayer.gl.genvm_contracts`` name.  Clear every loaded registry,
+        # not merely the first module imported by this launcher.
         for name, mod in list(sys.modules.items()):
-            if name.endswith("genvm_contracts") and hasattr(mod, "__known_contract__"):
-                mod.__known_contract__ = None
+            if "genvm_contracts" not in name:
+                continue
+            for attr in ("__known_contact__", "__known_contract__"):
+                if hasattr(mod, attr):
+                    setattr(mod, attr, None)
+
+    def _reset_known_contract_and_load(contract_path, vm, sdk_version=None):
+        _clear_contract_registries()
         return _orig_load_contract_class(contract_path, vm, sdk_version=sdk_version)
 
     _loader.load_contract_class = _reset_known_contract_and_load
+
+    # ``glsim.engine`` binds loader functions at module import time and also
+    # performs registry resets directly.  Import it after patching the loader,
+    # then replace its reset helper with the same version-agnostic sweep.
+    import glsim.engine as _engine
+
+    _engine.load_contract_class = _reset_known_contract_and_load
+    _engine.SimEngine._reset_contract_registry = staticmethod(
+        _clear_contract_registries
+    )
 
 
 def main() -> None:

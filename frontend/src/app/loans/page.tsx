@@ -5,11 +5,13 @@ import { listLoans } from "@/lib/api";
 import { Button, Card, EmptyState, ErrorState, LoadingState } from "@/components/ui";
 import { StatusBadge } from "@/components/StatusBadge";
 import { CollateralGauge } from "@/components/CollateralGauge";
+import { Countdown, useContractClock } from "@/components/Countdown";
 import { formatGen, formatBps, formatTs, shortAddr } from "@/lib/format";
 import { useWallet } from "@/context/WalletContext";
 import Link from "next/link";
 
 export default function LoansPage() {
+  const contractNow = useContractClock();
   const { sessionAddress } = useWallet();
   const [loans, setLoans] = useState<any[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -17,27 +19,38 @@ export default function LoansPage() {
   const [statusFilter, setStatusFilter] = useState<"all" | "compliant" | "grace" | "breach">("all");
 
   useEffect(() => {
+    let cancelled = false;
     setLoans(null);
     setError(null);
-    // The backend only supports one of lender/borrower per request; when
-    // "mine" is selected we fetch both roles and merge, deduping by id.
-    (async () => {
+    const refresh = async (initial = false) => {
       try {
+        // Loan-list polling is deliberately backend-only. An empty response
+        // is a valid fresh-contract state, not a reason for every browser to
+        // start reading GenLayer RPC directly.
+        const loadLoans = () => listLoans();
         if (filter === "mine" && sessionAddress) {
-          const [asLender, asBorrower] = await Promise.all([
-            listLoans({ lender: sessionAddress }),
-            listLoans({ borrower: sessionAddress }),
-          ]);
-          const byId = new Map<number, any>();
-          [...asLender, ...asBorrower].forEach((l) => byId.set(l.chain_loan_id, l));
-          setLoans([...byId.values()]);
+          const allLoans = await loadLoans();
+          if (!cancelled) {
+            setLoans(allLoans.filter((l) =>
+              (l.lender_address ?? l.lender)?.toLowerCase() === sessionAddress.toLowerCase() ||
+              (l.borrower_address ?? l.borrower)?.toLowerCase() === sessionAddress.toLowerCase()
+            ));
+          }
         } else {
-          setLoans(await listLoans());
+          if (!cancelled) setLoans(await loadLoans());
         }
       } catch (err: any) {
-        setError(err.message);
+        if (initial && !cancelled) setError(err.message);
       }
-    })();
+    };
+    // Poll the backend read cache; the backend indexer is responsible for
+    // keeping this view synchronized with the contract.
+    refresh(true);
+    const timer = window.setInterval(() => refresh(), 15000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
   }, [filter, sessionAddress]);
 
   function statusBucket(status: string): "compliant" | "grace" | "breach" {
@@ -153,11 +166,14 @@ export default function LoansPage() {
                   <p>
                     Interest {formatBps(loan.interest_bps)} · Matures {formatTs(loan.maturity_ts)}
                   </p>
+                  <p>
+                    Maturity countdown: <span className="font-onchain text-on-surface"><Countdown targetTs={loan.maturity_ts} elapsedLabel="Matured" nowTs={contractNow} /></span>
+                  </p>
                 </div>
                 <div className="mt-4">
                   <CollateralGauge
-                    collateralWei={Number(loan.collateral_deposited)}
-                    principalWei={Number(loan.principal_wei)}
+                    collateralWei={loan.collateral_deposited}
+                    principalWei={loan.principal_wei}
                     breachTier={loan.status?.startsWith("BREACH_TIER2") ? 2 : loan.status?.startsWith("BREACH_TIER1") ? 1 : loan.status === "DEFAULTED" ? 3 : 0}
                   />
                 </div>

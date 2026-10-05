@@ -7,12 +7,17 @@ export function CollateralGauge({
   principalWei,
   breachTier,
 }: {
-  collateralWei: number;
-  principalWei: number;
+  collateralWei: number | bigint | string;
+  principalWei: number | bigint | string;
   breachTier: number;
 }) {
-  const ratio = principalWei > 0 ? collateralWei / principalWei : 0;
-  const pct = Math.max(0, Math.min(100, Math.round(ratio * 100)));
+  const collateral = BigInt(collateralWei);
+  const principal = BigInt(principalWei);
+  // Keep wei arithmetic entirely in BigInt; mixing it with a number throws
+  // at runtime and previously crashed the loan detail route.
+  const pct = principal > 0n
+    ? Math.max(0, Math.min(100, Number((collateral * 10_000n) / principal) / 100))
+    : 0;
   const color = breachTier >= 3 ? "bg-error" : breachTier >= 1 ? "bg-secondary-container" : "bg-tertiary-container";
   return (
     <div>

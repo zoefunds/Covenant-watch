@@ -34,6 +34,7 @@ class Loan(Base):
     status: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
 
     principal_deposited: Mapped[str] = mapped_column(Numeric(78, 0), nullable=False, default=0)
+    principal_claimed: Mapped[bool] = mapped_column(nullable=False, default=False)
     collateral_deposited: Mapped[str] = mapped_column(Numeric(78, 0), nullable=False, default=0)
     claimable_lender_wei: Mapped[str] = mapped_column(Numeric(78, 0), nullable=False, default=0)
     claimable_borrower_wei: Mapped[str] = mapped_column(Numeric(78, 0), nullable=False, default=0)

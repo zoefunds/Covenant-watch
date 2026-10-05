@@ -25,7 +25,13 @@ def test_blocked_urls_raise(url):
         _validate_url_or_raise(url)
 
 
-def test_public_url_is_allowed():
-    # example.com resolves to public IPs; this should not raise.
+def test_public_url_is_allowed(monkeypatch):
+    # Keep this unit test hermetic: DNS availability is infrastructure, not
+    # behavior under test. The resolver returns a documentation-range public
+    # address which the validator should accept.
+    monkeypatch.setattr(
+        "app.services.url_preview.socket.getaddrinfo",
+        lambda *_args, **_kwargs: [(None, None, None, None, ("93.184.216.34", 0))],
+    )
     result = _validate_url_or_raise("https://example.com")
     assert result == "https://example.com"

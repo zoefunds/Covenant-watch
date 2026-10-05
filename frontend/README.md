@@ -42,8 +42,9 @@ during Next's static prerender pass.
 `src/lib/contract.ts` mirrors `contracts/covenant_watch.py`'s public methods
 exactly: `create_loan`, `lock_collateral`, `claim_principal`,
 `trigger_covenant_check`, `submit_challenge_evidence`,
-`finalize_covenant_check`, `repay_loan`, `reclaim_collateral_timeout`,
-`cancel_loan`, `claim_settlement`, plus every `@gl.public.view`. Two details
+`finalize_covenant_check`, `repay_loan`, `settle_matured_loan`, the safe
+backward-compatible `reclaim_collateral_timeout`, `cancel_loan`,
+`claim_settlement`, plus every `@gl.public.view`. Two details
 worth knowing if you touch this file:
 
 - `create_loan`'s `covenants_json` array items take a plain `threshold`
@@ -57,31 +58,38 @@ worth knowing if you touch this file:
 (`createClient`, `readContract`, `writeContract`,
 `waitForTransactionReceipt`). `src/lib/tx.ts` drives every write through
 `submitted → pending → finalized/failed` off the SDK's own transaction
-status enum — never a `setTimeout` standing in for real status.
+status enum, explicitly requesting `FINALIZED` instead of the SDK's
+`ACCEPTED` default and requiring `FINISHED_WITH_RETURN` so a finalized revert
+remains a failure — never a `setTimeout` standing in for real status.
 
 ## Pages
 
 - `/` — landing page.
-- `/loans` — dashboard: backend-cached loan list, a per-loan Collateral
+- `/loans` — dashboard: backend-indexed loan list, a per-loan Collateral
   Health Gauge, KPI row (total escrowed, loan count, in-grace count,
   breached count), and status filter tabs.
 - `/loans/new` — full covenant-builder form: per-covenant source
-  type/ref/condition/operator/threshold, a live SSRF-protected preview of
-  offchain URLs via the backend's `/covenants/preview-source`, client-side
+  type/three-publisher URL set/condition/operator/threshold, SSRF-protected
+  informational previews via `/covenants/preview-source`, distinct-hostname
+  enforcement, client-side
   vague-condition-phrase rejection mirroring the contract's own
   `VAGUE_CONDITION_FRAGMENTS` list, a bounded challenge-window slider, and a
   pre-deployment summary card.
 - `/loans/[id]` — loan detail and every lifecycle action (lock collateral,
-  claim principal, repay, cancel, reclaim-on-timeout, claim settlement),
-  each gated on the session address vs. the loan's lender/borrower.
+  claim principal, repay, cancel, permissionless maturity settlement, claim
+  settlement), each gated by contract state, with contract-clock-synchronized
+  countdowns and finalized one-shot actions disabled. Drawn/unpaid loans
+  default after maturity grace; undrawn loans unwind both escrows.
 - `/loans/[id]/covenants/[covenantId]/check` — trigger a covenant check
   (respecting the real on-chain cooldown via `get_cooldown_remaining`),
   with a Pinned Snapshot Hash display, a Validator Consensus Split Meter
   fed from the transaction receipt's consensus data, and distinct
-  INCONCLUSIVE-state treatment.
+  INCONCLUSIVE-state treatment. Cooldown and challenge-window actions are
+  disabled by live countdowns that mirror contract-enforced timestamps.
 - `/loans/[id]/covenants/[covenantId]/challenge` — additive-only evidence
   submission during an open challenge window; the form has no field that
-  can edit or replace the original pinned source or prior evidence.
+  can edit or replace the original pinned source set or prior evidence. The
+  contract accumulates three distinct evidence hosts before reevaluation.
 - `/history` — cross-loan check/challenge history from the backend cache.
 - `/profile` — session address and the connected user's loans by role.
 - `/settings` — network/contract/backend health, sign-out, and an explicit
@@ -109,7 +117,7 @@ URL, and WalletConnect project id, nothing secret.
 npm install
 cp .env.example .env.local
 # defaults already point at the live deployed contract
-# (0x601D14Fd4e99989883eeCC6a61dB6F0755AdF9a7, studionet) and a working
+# (0x5c3Fe893aaaa9C0416F76812c3903Cf4AfA528A7, studionet) and a working
 # Reown project id — only NEXT_PUBLIC_BACKEND_URL needs to match wherever
 # you're running backend/ (default http://localhost:8000)
 
@@ -120,15 +128,13 @@ npm run lint
 
 ## Tests / verification
 
-There is no dedicated frontend test suite; verification is `npm run build`
-and `npm run lint` passing cleanly, plus manual browser walkthroughs. Both
-commands are confirmed passing as of the current codebase. Actually
-approving a `personal_sign` request or a real `writeContract` transaction
-through a live wallet extension has not been exercised from an automated
-sandbox — every write path is real (`genlayer-js` `writeContract`,
-real tx-hash-returning calls, no mocked signer) but needs a human with a
-real wallet to click through end-to-end; see `DEPLOYMENT.md`'s Human
-Verification Checklist.
+There is no dedicated component test suite. The current verification baseline
+is ESLint, `tsc --noEmit`, and a complete Next.js production build. The
+separate StudioNet harness exercised real `genlayer-js` writes, finalized
+receipts, validator consensus, immediate state rereads, repayment, and
+settlement against the production contract. Browser-wallet approval remains a
+manual UI check because automation uses unlocked test accounts rather than a
+wallet extension.
 
 ## Deployment
 

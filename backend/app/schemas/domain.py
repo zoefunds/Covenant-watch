@@ -3,7 +3,7 @@ from __future__ import annotations
 import datetime as dt
 from typing import Any, Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 
 
 class LoanOut(BaseModel):
@@ -19,10 +19,27 @@ class LoanOut(BaseModel):
     maturity_ts: int
     status: str
     principal_deposited: str
+    principal_claimed: bool
     collateral_deposited: str
     claimable_lender_wei: str
     claimable_borrower_wei: str
     updated_at: dt.datetime
+
+    @field_validator(
+        "principal_wei",
+        "collateral_wei",
+        "principal_deposited",
+        "collateral_deposited",
+        "claimable_lender_wei",
+        "claimable_borrower_wei",
+        mode="before",
+    )
+    @classmethod
+    def coerce_numeric_strings(cls, value: Any) -> str:
+        # PostgreSQL Numeric columns are returned as Decimal instances by
+        # SQLAlchemy; the public API deliberately exposes exact integer
+        # amounts as strings to avoid JSON precision loss in browsers.
+        return str(value)
 
 
 class CovenantOut(BaseModel):

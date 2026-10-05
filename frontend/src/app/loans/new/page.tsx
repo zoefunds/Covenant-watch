@@ -4,11 +4,13 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Card, Field, Input, Select, TextArea, ErrorState } from "@/components/ui";
 import { TxStatusPanel } from "@/components/TxStatusPanel";
+import { Countdown, useContractClock } from "@/components/Countdown";
 import { useWallet } from "@/context/WalletContext";
 import { useSigner } from "@/lib/useSigner";
-import { previewSource } from "@/lib/api";
+import { previewSource, syncLoans } from "@/lib/api";
 import { runTrackedWrite, TxSnapshot } from "@/lib/tx";
 import { createLoan, CovenantInput, VAGUE_CONDITION_FRAGMENTS, CHALLENGE_WINDOW_BOUNDS, MAX_COVENANTS_PER_LOAN } from "@/lib/contract";
+import { CONTRACT_ADDRESS } from "@/lib/config";
 import { genToWei, formatDuration, formatBps } from "@/lib/format";
 
 type DraftCovenant = CovenantInput & { _previewLoading?: boolean; _previewBody?: string; _previewError?: string };
@@ -16,6 +18,7 @@ type DraftCovenant = CovenantInput & { _previewLoading?: boolean; _previewBody?:
 const EMPTY_COVENANT: DraftCovenant = {
   source_type: "OFFCHAIN",
   source_ref: "",
+  source_refs: ["", "", ""],
   condition_field: "",
   operator: ">=",
   threshold: 0,
@@ -25,12 +28,26 @@ const EMPTY_COVENANT: DraftCovenant = {
 };
 
 function validateCovenant(c: DraftCovenant, idx: number): string | null {
-  if (!c.source_ref.trim()) return `Covenant ${idx + 1}: source is required`;
-  if (c.source_type === "OFFCHAIN" && !/^https?:\/\//.test(c.source_ref)) {
-    return `Covenant ${idx + 1}: OFFCHAIN source must be an http(s) URL`;
+  if (c.source_type === "OFFCHAIN") {
+    const sources = c.source_refs ?? [];
+    if (sources.length < 3 || sources.some((url) => !/^https:\/\//.test(url))) {
+      return `Covenant ${idx + 1}: provide at least three public HTTPS publisher URLs`;
+    }
+    try {
+      const hosts = sources.map((url) => new URL(url).hostname.toLowerCase());
+      if (new Set(hosts).size !== hosts.length) {
+        return `Covenant ${idx + 1}: each OFFCHAIN source must use a distinct publisher hostname`;
+      }
+    } catch {
+      return `Covenant ${idx + 1}: every OFFCHAIN source must be a valid HTTPS URL`;
+    }
   }
+  if (c.source_type === "ONCHAIN" && !c.source_ref.trim()) return `Covenant ${idx + 1}: source is required`;
   if (c.source_type === "ONCHAIN" && !/^0x[0-9a-fA-F]{38,40}$/.test(c.source_ref)) {
     return `Covenant ${idx + 1}: ONCHAIN source must be a contract address`;
+  }
+  if (c.source_type === "ONCHAIN" && c.source_ref.toLowerCase() === CONTRACT_ADDRESS.toLowerCase()) {
+    return `Covenant ${idx + 1}: the Covenant Watch contract is not a data source. Use a separate contract that exposes get_${c.condition_field || "<field>"}().`;
   }
   if (!c.condition_field.trim()) return `Covenant ${idx + 1}: condition field is required`;
   if (!c.description.trim()) return `Covenant ${idx + 1}: description is required`;
@@ -46,6 +63,7 @@ function validateCovenant(c: DraftCovenant, idx: number): string | null {
 }
 
 export default function NewLoanPage() {
+  const contractNow = useContractClock();
   const router = useRouter();
   const { sessionAddress } = useWallet();
   const signer = useSigner();
@@ -79,18 +97,22 @@ export default function NewLoanPage() {
       {
         ...EMPTY_COVENANT,
         source_type: "ONCHAIN",
-        source_ref: "0x2b6C4f4A8d1E7b3F905c1A2b3C4d5E6f78901234",
+        source_ref: "0xca24902BDd878ca25714aD2a1C6A6d7558aa6759",
         condition_field: "validator_signer_count",
         operator: ">=",
         threshold: 3,
-        description: "Validator signer count reported by the source contract must stay at or above 3.",
+        description: "A source contract's get_validator_signer_count() view must report at least 3.",
         tier1_interest_step_up_bps: 200,
         tier2_seizure_bps: 2500,
       },
       {
         ...EMPTY_COVENANT,
         source_type: "OFFCHAIN",
-        source_ref: "https://docs.genlayer.com/",
+        source_refs: [
+          "https://docs.genlayer.com/validators",
+          "https://genlayer.foundation/validators",
+          "https://genlayer.com/validators",
+        ],
         condition_field: "documented_validator_count",
         operator: ">=",
         threshold: 4,
@@ -103,10 +125,11 @@ export default function NewLoanPage() {
 
   async function previewCovenantUrl(i: number) {
     const c = covenants[i];
-    if (c.source_type !== "OFFCHAIN" || !/^https?:\/\//.test(c.source_ref)) return;
+    const url = c.source_refs?.[0] ?? "";
+    if (c.source_type !== "OFFCHAIN" || !/^https?:\/\//.test(url)) return;
     updateCovenant(i, { _previewLoading: true, _previewError: undefined });
     try {
-      const res = await previewSource(c.source_ref);
+      const res = await previewSource(url);
       updateCovenant(i, { _previewLoading: false, _previewBody: res.truncated_body.slice(0, 500) });
     } catch (err: any) {
       updateCovenant(i, { _previewLoading: false, _previewError: err.message });
@@ -136,7 +159,7 @@ export default function NewLoanPage() {
       return;
     }
     const maturityTs = Math.floor(new Date(maturityDate).getTime() / 1000);
-    if (maturityTs <= Math.floor(Date.now() / 1000)) {
+    if (maturityTs <= Math.floor(contractNow)) {
       setFormError("Maturity must be in the future.");
       return;
     }
@@ -161,6 +184,7 @@ export default function NewLoanPage() {
     const cleanCovenants: CovenantInput[] = covenants.map((c) => ({
       source_type: c.source_type,
       source_ref: c.source_ref.trim(),
+      source_refs: c.source_type === "OFFCHAIN" ? (c.source_refs ?? []).map((url) => url.trim()) : undefined,
       condition_field: c.condition_field.trim(),
       operator: c.operator,
       threshold: c.threshold,
@@ -185,8 +209,11 @@ export default function NewLoanPage() {
     );
 
     if (result.phase === "finalized") {
-      // Best-effort: the loan id isn't in the receipt in every SDK build,
-      // so we route to the loans list rather than guess at an id.
+      try {
+        await syncLoans();
+      } catch {
+        // The normal backend poll remains the fallback.
+      }
       router.push("/loans");
     }
   }
@@ -222,6 +249,11 @@ export default function NewLoanPage() {
             </Field>
             <Field label="Maturity date">
               <Input type="datetime-local" value={maturityDate} onChange={(e) => setMaturityDate(e.target.value)} />
+              {maturityDate && Number.isFinite(new Date(maturityDate).getTime()) && (
+                <p className="mt-1 text-xs text-on-surface-variant">
+                  Time until maturity: <Countdown targetTs={Math.floor(new Date(maturityDate).getTime() / 1000)} nowTs={contractNow} />
+                </p>
+              )}
             </Field>
             <Field label="Principal (GEN)" hint="Attached as the transaction's call value">
               <Input placeholder="1000" value={principalGen} onChange={(e) => setPrincipalGen(e.target.value)} />
@@ -276,17 +308,38 @@ export default function NewLoanPage() {
                   <option value="ONCHAIN">ONCHAIN (contract)</option>
                 </Select>
               </Field>
-              <Field
-                label={c.source_type === "OFFCHAIN" ? "Source URL" : "Source contract address"}
-                hint={c.source_type === "OFFCHAIN" ? "Must be http(s)" : "0x… GenLayer contract"}
-              >
-                <Input
-                  placeholder={c.source_type === "OFFCHAIN" ? "https://…" : "0x…"}
-                  value={c.source_ref}
-                  onChange={(e) => updateCovenant(i, { source_ref: e.target.value })}
-                  onBlur={() => previewCovenantUrl(i)}
-                />
-              </Field>
+              {c.source_type === "OFFCHAIN" ? (
+                <div className="sm:col-span-2">
+                  <Field
+                    label="Independent publisher URLs"
+                    hint="At least three distinct HTTPS hostnames. The contract requires a numeric majority before any verdict."
+                  >
+                    <div className="space-y-2">
+                      {(c.source_refs ?? ["", "", ""]).map((url, sourceIndex) => (
+                        <Input
+                          key={sourceIndex}
+                          placeholder={`https://publisher-${sourceIndex + 1}.example/report`}
+                          value={url}
+                          onChange={(e) => {
+                            const next = [...(c.source_refs ?? ["", "", ""] )];
+                            next[sourceIndex] = e.target.value;
+                            updateCovenant(i, { source_refs: next });
+                          }}
+                          onBlur={() => sourceIndex === 0 && previewCovenantUrl(i)}
+                        />
+                      ))}
+                    </div>
+                  </Field>
+                </div>
+              ) : (
+                <Field label="Source contract address" hint="0x… GenLayer contract">
+                  <Input
+                    placeholder="0x…"
+                    value={c.source_ref}
+                    onChange={(e) => updateCovenant(i, { source_ref: e.target.value })}
+                  />
+                </Field>
+              )}
               <Field label="Condition field" hint="Specific, checkable field name — no vague phrasing">
                 <Input
                   placeholder="e.g. debt_to_equity_ratio"
@@ -341,7 +394,7 @@ export default function NewLoanPage() {
                 Tier 3 (full default) is automatic on a third confirmed breach — no additional configuration.
               </p>
             </div>
-            {c.source_type === "OFFCHAIN" && c.source_ref && (
+            {c.source_type === "OFFCHAIN" && c.source_refs?.[0] && (
               <div className="mt-3 rounded border border-outline-variant bg-surface-container-lowest p-3 text-xs">
                 {c._previewLoading && <p className="text-on-surface-variant">Fetching live preview…</p>}
                 {c._previewError && <p className="text-error">{c._previewError}</p>}
@@ -389,8 +442,8 @@ export default function NewLoanPage() {
         {formError && <ErrorState title="Fix the form" body={formError} />}
         <TxStatusPanel snap={snap} />
 
-        <Button onClick={handleSubmit} disabled={!signer || snap.phase === "submitted" || snap.phase === "pending"}>
-          {snap.phase === "submitted" || snap.phase === "pending" ? "Submitting…" : "Create loan"}
+        <Button onClick={handleSubmit} disabled={!signer || snap.phase === "submitted" || snap.phase === "pending" || snap.phase === "finalized"}>
+          {snap.phase === "submitted" || snap.phase === "pending" ? "Submitting…" : snap.phase === "finalized" ? "Loan created" : "Create loan"}
         </Button>
         <p className="text-xs text-on-surface-variant">
           After creation, the borrower locks the exact collateral amount via the loan detail page&apos;s Lock Collateral

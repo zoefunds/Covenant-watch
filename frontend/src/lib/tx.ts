@@ -6,6 +6,12 @@
 // getTransaction against real chain state.
 
 import { getReadClient } from "./genlayer";
+import {
+  ExecutionResult,
+  TransactionStatus,
+  executionResultNumberToName,
+  transactionsStatusNumberToName,
+} from "genlayer-js/types";
 
 export type TxPhase = "idle" | "submitted" | "pending" | "finalized" | "failed";
 
@@ -18,7 +24,7 @@ export interface TxSnapshot {
 }
 
 const FAILURE_STATUSES = new Set(["CANCELED", "VALIDATORS_TIMEOUT", "LEADER_TIMEOUT", "UNDETERMINED"]);
-const DONE_STATUSES = new Set(["FINALIZED", "ACCEPTED"]);
+const DONE_STATUSES = new Set(["FINALIZED"]);
 
 /**
  * Drives a write call through to a real terminal state, invoking onUpdate
@@ -44,10 +50,51 @@ export async function runTrackedWrite(
 
   const client = getReadClient();
   try {
-    const receipt = await client.waitForTransactionReceipt({ hash, retries: 40, interval: 3000 });
-    const statusName = (receipt as any)?.status ?? (receipt as any)?.statusName;
+    // The SDK defaults to ACCEPTED, which is still appealable. Contract state
+    // must not drive UI updates until the transaction is irreversibly final.
+    const receipt = await client.waitForTransactionReceipt({
+      hash,
+      status: TransactionStatus.FINALIZED,
+      // Finality can substantially lag acceptance on an appealable
+      // intelligent-contract transaction. Keep polling for up to one hour.
+      retries: 1200,
+      interval: 3000,
+    });
+    // Prefer the SDK's decoded enum name; `status` may be the numeric on-chain
+    // enum value (7 for FINALIZED) depending on provider/version.
+    const rawStatus = (receipt as any)?.statusName ?? (receipt as any)?.status;
+    const statusName = typeof rawStatus === "number" || /^\d+$/.test(String(rawStatus))
+      ? transactionsStatusNumberToName[String(rawStatus) as keyof typeof transactionsStatusNumberToName]
+      : rawStatus;
     if (statusName && FAILURE_STATUSES.has(statusName)) {
       const snap: TxSnapshot = { phase: "failed", hash, statusName, error: `Transaction ended in ${statusName}` };
+      onUpdate(snap);
+      return snap;
+    }
+    if (statusName !== TransactionStatus.FINALIZED) {
+      const snap: TxSnapshot = {
+        phase: "failed",
+        hash,
+        statusName,
+        error: `Expected FINALIZED but received ${statusName || "an unknown status"}`,
+      };
+      onUpdate(snap);
+      return snap;
+    }
+    const rawExecutionResult = (receipt as any)?.txExecutionResultName ?? (receipt as any)?.txExecutionResult;
+    const executionResult = typeof rawExecutionResult === "number" || /^\d+$/.test(String(rawExecutionResult))
+      ? executionResultNumberToName[String(rawExecutionResult) as keyof typeof executionResultNumberToName]
+      : rawExecutionResult;
+    if (executionResult !== ExecutionResult.FINISHED_WITH_RETURN) {
+      const snap: TxSnapshot = {
+        phase: "failed",
+        hash,
+        statusName,
+        result: receipt,
+        error: executionResult === ExecutionResult.FINISHED_WITH_ERROR
+          ? "Transaction finalized, but contract execution reverted. No state was changed."
+          : `Transaction finalized without a successful execution result (${executionResult || "unknown"}).`,
+      };
       onUpdate(snap);
       return snap;
     }

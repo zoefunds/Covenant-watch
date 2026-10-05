@@ -7,7 +7,7 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import List, Optional
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -46,17 +46,18 @@ class Settings(BaseSettings):
     GENLAYER_RPC_URL: Optional[str] = Field(
         default=None, description="Override RPC URL; if unset, uses the network's default."
     )
-    # 8s was far too aggressive: each sync pass makes 1 call just to check
-    # get_loan_count(), so even with zero loans that alone is ~450 calls/hr
-    # per running machine -- before counting per-loan/covenant/check calls
-    # or the frontend's own direct browser->RPC reads (which never touch
-    # this backend at all, so this budget can't see or limit them either).
+    # The indexer refreshes existing loans as well as discovering new ones.
+    # Keep this deliberately slower than the frontend's REST polling: browser
+    # refreshes never touch GenLayer RPC, while a chain pass may make several
+    # calls per loan/covenant/check.
     # GenLayer's actual live rate limit -- confirmed from a real
     # "Rate limit exceeded: 500 requests per hour" RPC error, NOT the
     # 5000/hour figure this project was originally told -- is 500/hour,
-    # shared across everything this app's RPC key does. 60s keeps sustained
-    # idle polling under ~60 calls/hr per machine.
-    INDEXER_POLL_INTERVAL_SECONDS: int = Field(default=60)
+    # shared across everything this app's RPC key does. One minute detects a
+    # new loan promptly; the bounded active refresh window keeps that cadence
+    # below the 300/hour application budget on the free tier.
+    INDEXER_POLL_INTERVAL_SECONDS: int = Field(default=60, ge=30)
+    INDEXER_MAX_REFRESH_LOANS: int = Field(default=2, ge=1, le=50)
     INDEXER_ENABLED: bool = Field(default=True)
 
     # --- Redis (distributed coordination: GenLayer RPC hourly budget +
@@ -92,6 +93,17 @@ class Settings(BaseSettings):
         if isinstance(v, str):
             return v.strip().lower() in ("1", "true", "yes", "on")
         return v
+
+    @model_validator(mode="after")
+    def validate_production_security(self):
+        if self.ENV.lower() == "production":
+            if self.SESSION_SECRET == "dev-only-insecure-secret-change-me":
+                raise ValueError("SESSION_SECRET must be set to a strong value in production")
+            if not self.CONTRACT_ADDRESS:
+                raise ValueError("CONTRACT_ADDRESS must be set in production")
+            if not self.COOKIE_SECURE:
+                raise ValueError("COOKIE_SECURE must remain enabled in production")
+        return self
 
     @property
     def cors_origins_list(self) -> List[str]:

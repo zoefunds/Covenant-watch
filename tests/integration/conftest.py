@@ -37,12 +37,28 @@ import pytest
 from gltest import get_accounts, get_contract_factory
 from gltest.assertions import tx_execution_succeeded
 from gltest.contracts.contract import Contract
+from gltest.contracts.contract_functions import ContractFunction
+from gltest.types import TransactionStatus
 from gltest.utils import extract_contract_address
 
 CONTRACT_FILE = "covenant_watch.py"
 HELPER_CONTRACT_FILE = "test_helpers/mock_signer_registry.py"
 
 DAY = 24 * 60 * 60
+
+# gltest defaults writes to ACCEPTED. The application contract promises UI
+# updates only after irreversible finality, so the live suite must exercise
+# the same boundary for every method call unless a test explicitly overrides
+# it. Deployment is configured separately below.
+_original_transact = ContractFunction.transact
+
+
+def _transact_finalized(self, *args, **kwargs):
+    kwargs.setdefault("wait_transaction_status", TransactionStatus.FINALIZED)
+    return _original_transact(self, *args, **kwargs)
+
+
+ContractFunction.transact = _transact_finalized
 
 COVENANT_WATCH_SCHEMA = {
     "methods": {
@@ -55,6 +71,7 @@ COVENANT_WATCH_SCHEMA = {
         "finalize_covenant_check": {"readonly": False},
         "repay_loan": {"readonly": False},
         "reclaim_collateral_timeout": {"readonly": False},
+        "settle_matured_loan": {"readonly": False},
         "cancel_loan": {"readonly": False},
         "claim_settlement": {"readonly": False},
         # ---- views ----
@@ -66,6 +83,7 @@ COVENANT_WATCH_SCHEMA = {
         "get_covenant_check_history": {"readonly": True},
         "get_challenge_state": {"readonly": True},
         "get_loan_count": {"readonly": True},
+        "get_current_time": {"readonly": True},
         "get_cooldown_remaining": {"readonly": True},
     }
 }
@@ -84,7 +102,11 @@ def deploy_with_manual_schema(contract_file_path, schema, args, account):
     schema derivation. The deployment transaction itself is real and goes
     through full consensus exactly as `factory.deploy()` would."""
     factory = get_contract_factory(contract_file_path=contract_file_path)
-    receipt = factory.deploy_contract_tx(args=args, account=account)
+    receipt = factory.deploy_contract_tx(
+        args=args,
+        account=account,
+        wait_transaction_status=TransactionStatus.FINALIZED,
+    )
     address = extract_contract_address(receipt)
     if not address:
         raise AssertionError(f"deploy receipt had no contract address: {receipt}")
@@ -124,9 +146,14 @@ def onchain_covenant(source_ref, field="signer_count", op=">=", threshold=3,
 
 def offchain_covenant(url, field="reserve_ratio", op=">=", threshold=1.0,
                        tier1=500, tier2=5000):
+    # The fixture origin must expose three independently hosted aliases.
+    # OFFCHAIN_BASE_URLS is preferred; the single-url argument is retained
+    # only as the first entry for call-site readability.
+    configured = [item.strip() for item in os.environ.get("OFFCHAIN_BASE_URLS", "").split(",") if item.strip()]
+    sources = [f"{base.rstrip('/')}/{url.rsplit('/', 1)[-1]}" for base in configured] if configured else [url]
     return {
         "source_type": "OFFCHAIN",
-        "source_ref": url,
+        "source_refs": sources,
         "condition_field": field,
         "operator": op,
         "threshold": threshold,
@@ -249,7 +276,11 @@ def llm_provider_status():
     too, or just ignore a false-negative skip -- the tests will simply
     hit a real LLM error instead if the key is in fact missing there.
     """
-    if os.environ.get("OPENAI_API_KEY") or os.environ.get("HEURIST_API_KEY"):
+    if (
+        os.environ.get("OPENAI_API_KEY")
+        or os.environ.get("HEURIST_API_KEY")
+        or os.environ.get("RUN_LIVE_LLM") == "1"
+    ):
         return True, ""
     return False, (
         "no LLM provider API key (OPENAI_API_KEY / HEURIST_API_KEY) found in "
@@ -346,21 +377,11 @@ class _FixtureHandler(http.server.BaseHTTPRequestHandler):
 
 @pytest.fixture(scope="session")
 def offchain_pages_base_url():
-    """Start a throwaway local HTTP server serving the fixture pages above
-    for the duration of the test session, and return its base URL. Override
-    with OFFCHAIN_BASE_URL if validators in your target network cannot
-    reach 127.0.0.1 on this machine (e.g. a remote testnet)."""
-    override = os.environ.get("OFFCHAIN_BASE_URL")
-    if override:
-        yield override.rstrip("/")
+    """Return a public HTTPS fixture origin reachable by every validator."""
+    overrides = [item.strip().rstrip("/") for item in os.environ.get("OFFCHAIN_BASE_URLS", "").split(",") if item.strip()]
+    if overrides:
+        if len(overrides) < 3 or any(not item.startswith("https://") for item in overrides):
+            pytest.fail("OFFCHAIN_BASE_URLS must contain at least three comma-separated public HTTPS origins")
+        yield overrides[0]
         return
-
-    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), _FixtureHandler)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    port = server.server_address[1]
-    try:
-        yield f"http://127.0.0.1:{port}"
-    finally:
-        server.shutdown()
-        thread.join(timeout=5)
+    pytest.skip("set OFFCHAIN_BASE_URLS to three validator-reachable public HTTPS fixture origins")

@@ -51,6 +51,7 @@ export const listLoans = (params?: { lender?: string; borrower?: string }) => {
   const suffix = qs.toString() ? `?${qs.toString()}` : "";
   return req<any[]>(`/loans${suffix}`);
 };
+export const syncLoans = () => req<any[]>("/loans/sync", { method: "POST" });
 
 export const getLoanCached = (loanId: number) => req<any>(`/loans/${loanId}`);
 export const getLoanCovenantsCached = (loanId: number) => req<any[]>(`/loans/${loanId}/covenants`);

@@ -7,6 +7,7 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { SnapshotHash } from "@/components/SnapshotHash";
 import { ConsensusMeter } from "@/components/ConsensusMeter";
 import { TxStatusPanel } from "@/components/TxStatusPanel";
+import { Countdown, useContractClock, useCountdown } from "@/components/Countdown";
 import { useWallet } from "@/context/WalletContext";
 import { useSigner } from "@/lib/useSigner";
 import {
@@ -37,6 +38,7 @@ export default function CheckPage() {
   const [cooldown, setCooldown] = useState<number>(0);
   const [error, setError] = useState<string | null>(null);
   const [snap, setSnap] = useState<TxSnapshot>({ phase: "idle" });
+  const [completedFinalizations, setCompletedFinalizations] = useState<Set<number>>(new Set());
 
   const reload = useCallback(async () => {
     setError(null);
@@ -71,15 +73,23 @@ export default function CheckPage() {
 
   async function finalize(checkId: number) {
     if (!signer) return;
-    await runTrackedWrite(() => finalizeCovenantCheck(signer, loanId, checkId), setSnap);
-    await reload();
+    const result = await runTrackedWrite(() => finalizeCovenantCheck(signer, loanId, checkId), setSnap);
+    if (result.phase === "finalized") {
+      setCompletedFinalizations((current) => new Set(current).add(checkId));
+      await reload();
+    }
   }
+
+  const focusedCheck = requestedCheckId !== null
+    ? history?.find((h) => h.id === requestedCheckId)
+    : history?.[history.length - 1];
+  const contractNow = useContractClock();
+  const challengeRemaining = useCountdown(focusedCheck?.challenge_window_ends_at || 0, contractNow);
 
   if (!Number.isFinite(loanId) || !Number.isFinite(covenantId)) return <ErrorState body="Invalid loan/covenant id" />;
   if (error) return <div className="mx-auto max-w-3xl px-4 py-10"><ErrorState body={error} /></div>;
   if (!covenant || !history) return <div className="mx-auto max-w-3xl px-4 py-10"><LoadingState /></div>;
 
-  const focusedCheck = requestedCheckId ? history.find((h) => h.id === requestedCheckId) : history[history.length - 1];
   const consensusVotes = (snap.result as any)?.consensus_data?.votes;
   const agree = Array.isArray(consensusVotes) ? consensusVotes.filter((v: any) => v?.vote === "AGREE" || v?.vote === "agree").length : null;
   const total = Array.isArray(consensusVotes) ? consensusVotes.length : null;
@@ -144,9 +154,10 @@ export default function CheckPage() {
               </p>
             )}
             {focusedCheck.status === "BREACH" && (
-              <p className="text-on-surface-variant">
-                Challenge window ends: <Mono className="text-on-surface">{formatTs(focusedCheck.challenge_window_ends_at)}</Mono>
-              </p>
+              <div className="text-on-surface-variant">
+                <p>Challenge window ends: <Mono className="text-on-surface">{formatTs(focusedCheck.challenge_window_ends_at)}</Mono></p>
+                <p className="mt-1">Time remaining: <Mono className="text-on-surface"><Countdown targetTs={focusedCheck.challenge_window_ends_at} elapsedLabel="Closed — ready to finalize" nowTs={contractNow} /></Mono></p>
+              </div>
             )}
           </div>
 
@@ -160,11 +171,16 @@ export default function CheckPage() {
           <div className="mt-4 flex flex-wrap gap-2">
             {focusedCheck.status === "BREACH" && !focusedCheck.finalized && (
               <>
-                <Button href={`/loans/${loanId}/covenants/${covenantId}/challenge?checkId=${focusedCheck.id}`} variant="secondary">
-                  Submit challenge evidence
-                </Button>
-                <Button onClick={() => finalize(focusedCheck.id)} disabled={!signer}>
-                  Finalize check
+                {challengeRemaining > 0 && covenant.source_type === "OFFCHAIN" && (
+                  <Button href={`/loans/${loanId}/covenants/${covenantId}/challenge?checkId=${focusedCheck.id}`} variant="secondary">
+                    Submit challenge evidence
+                  </Button>
+                )}
+                <Button
+                  onClick={() => finalize(focusedCheck.id)}
+                  disabled={!signer || challengeRemaining > 0 || snap.phase === "submitted" || snap.phase === "pending" || completedFinalizations.has(focusedCheck.id)}
+                >
+                  {completedFinalizations.has(focusedCheck.id) ? "Check finalized" : challengeRemaining > 0 ? "Finalize after countdown" : "Finalize check"}
                 </Button>
               </>
             )}

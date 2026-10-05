@@ -16,9 +16,10 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from genlayer_py import create_client, generate_private_key
+from genlayer_py import generate_private_key
 from genlayer_py.accounts import create_account
 from genlayer_py.chains import localnet, studionet, testnet_asimov, testnet_bradbury
+from genlayer_py.client.genlayer_client import GenLayerClient
 
 from app.core.config import get_settings
 from app.core.logging import get_logger
@@ -69,7 +70,14 @@ def get_client():
                 update={"rpc_urls": {"default": {"http": [settings.GENLAYER_RPC_URL]}}}
             )
         ephemeral_account = create_account(generate_private_key())
-        _client_singleton = create_client(chain=chain, account=ephemeral_account)
+        # `genlayer_py.create_client()` eagerly initializes the consensus
+        # contract. That initialization is only needed for writes; this
+        # backend is read-only. On current StudioNet responses the eager
+        # initialization can fail while decoding consensus RLP, preventing
+        # otherwise valid application view calls (including get_loan_count)
+        # from ever being attempted. Construct the client directly so the
+        # indexer only uses the application RPC calls it actually needs.
+        _client_singleton = GenLayerClient(chain_config=chain, account=ephemeral_account)
     return _client_singleton
 
 

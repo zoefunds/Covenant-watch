@@ -5,9 +5,10 @@ import { useParams, useSearchParams } from "next/navigation";
 import { Button, Card, ErrorState, Field, Input, LoadingState, TextArea, Mono } from "@/components/ui";
 import { StatusBadge } from "@/components/StatusBadge";
 import { TxStatusPanel } from "@/components/TxStatusPanel";
+import { Countdown, useContractClock, useCountdown } from "@/components/Countdown";
 import { useSigner } from "@/lib/useSigner";
 import { getCheck, getChallengeState, submitChallengeEvidence, CheckDict } from "@/lib/contract";
-import { formatTs, relativeToNow } from "@/lib/format";
+import { formatTs } from "@/lib/format";
 import { runTrackedWrite, TxSnapshot } from "@/lib/tx";
 
 export default function ChallengePage() {
@@ -42,14 +43,17 @@ export default function ChallengePage() {
     if (Number.isFinite(checkId)) reload();
   }, [checkId, reload]);
 
+  const contractNow = useContractClock();
+  const challengeRemaining = useCountdown(check?.challenge_window_ends_at || 0, contractNow);
+
   async function submit() {
     setFormError(null);
     if (!signer) {
       setFormError("Sign in first.");
       return;
     }
-    if (!/^https?:\/\//.test(evidenceUrl)) {
-      setFormError("Evidence URL must be http(s).");
+    if (!/^https:\/\//.test(evidenceUrl)) {
+      setFormError("Evidence URL must be HTTPS.");
       return;
     }
     if (!evidenceNote.trim()) {
@@ -71,7 +75,7 @@ export default function ChallengePage() {
   if (error) return <div className="mx-auto max-w-3xl px-4 py-10"><ErrorState body={error} /></div>;
   if (!check || !state) return <div className="mx-auto max-w-3xl px-4 py-10"><LoadingState /></div>;
 
-  const windowOpen = state.window_open;
+  const windowOpen = state.window_open && !state.finalized && challengeRemaining > 0;
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
@@ -84,7 +88,7 @@ export default function ChallengePage() {
       </div>
       <p className="mt-2 text-sm text-on-surface-variant">
         {windowOpen
-          ? `Challenge window open — ${relativeToNow(check.challenge_window_ends_at)}.`
+          ? <>Challenge window open — <Countdown targetTs={check.challenge_window_ends_at} nowTs={contractNow} /> remaining.</>
           : `Challenge window closed at ${formatTs(check.challenge_window_ends_at)}.`}
       </p>
 
@@ -150,8 +154,8 @@ export default function ChallengePage() {
           </Field>
           {formError && <ErrorState body={formError} />}
           <TxStatusPanel snap={snap} />
-          <Button onClick={submit} disabled={!signer || !windowOpen || snap.phase === "submitted" || snap.phase === "pending"}>
-            {snap.phase === "submitted" || snap.phase === "pending" ? "Submitting…" : "Submit additional evidence"}
+          <Button onClick={submit} disabled={!signer || !windowOpen || snap.phase === "submitted" || snap.phase === "pending" || snap.phase === "finalized"}>
+            {snap.phase === "submitted" || snap.phase === "pending" ? "Submitting…" : snap.phase === "finalized" ? "Evidence submitted" : "Submit additional evidence"}
           </Button>
         </div>
       </Card>

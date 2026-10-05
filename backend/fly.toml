@@ -3,7 +3,7 @@
 # See https://fly.io/docs/reference/configuration/ for information about how to use this file.
 #
 
-app = 'covenant-watch-backend'
+app = 'covenant-watch-api'
 primary_region = 'iad'
 
 [build]
@@ -21,6 +21,10 @@ primary_region = 'iad'
   auto_stop_machines = 'off'
   auto_start_machines = true
   min_machines_running = 1
+  # Deliberately pinned to one machine for cost and RPC-budget predictability.
+  # The indexer now has both process-local and PostgreSQL advisory locks, so
+  # accidental replicas cannot overlap sync passes; Redis also coordinates the
+  # shared RPC budget. Scale only after sizing the external services/budget.
 
   [[http_service.checks]]
     interval = '15s'

@@ -20,9 +20,10 @@ above 1.05," and the lender either takes their word for it or pays for
 expensive off-chain verification after the fact. Covenant Watch replaces
 that trust relationship with a neutral, automated inspection: GenLayer's
 non-deterministic execution (`gl.vm.run_nondet_unsafe`) lets multiple
-validators independently fetch the same pinned source — an onchain contract
-read or an offchain URL — and agree on a structured result through the
-protocol's own equivalence rules, not a single party's say-so.
+validators independently read an onchain source or fetch every URL in a
+creation-time-pinned set of independent publishers. The contract requires a
+publisher majority and validator consensus, rather than any single party's
+say-so.
 
 ## The core trust-boundary loop
 
@@ -31,7 +32,7 @@ protocol's own equivalence rules, not a single party's say-so.
         |
  LOCKED COLLATERAL
         |
- CHECK TRIGGER  (pins a source snapshot BEFORE evaluation)
+ CHECK TRIGGER  (pins source-set identity BEFORE evaluation)
         |
  INDEPENDENT VALIDATOR INSPECTION  (gl.vm.run_nondet_unsafe)
         |
@@ -51,7 +52,7 @@ protocol's own equivalence rules, not a single party's say-so.
 Every step in that loop is enforced in `contracts/covenant_watch.py` itself,
 not just documented convention:
 
-- A covenant's `source_type` / `source_ref` / `operator` / `threshold` are
+- A covenant's `source_type` / source set / `operator` / `threshold` are
   fixed at `create_loan()` time. No function anywhere lets a party change
   them later.
 - Vague, non-checkable covenant text (`"good standing"`, `"commercially
@@ -61,8 +62,11 @@ not just documented convention:
 - `trigger_covenant_check()` writes an immutable snapshot (source hash +
   consensus-agreed timestamp) to storage **before** the non-deterministic
   evaluation runs.
-- The leader/validator evaluation functions always independently re-fetch
-  the pinned source themselves — they never accept a pre-fetched payload.
+- OFFCHAIN covenants require 3–5 unique HTTPS URLs on distinct hostnames.
+  Every leader and validator independently fetches the full pinned set; no
+  backend response body or caller-supplied verdict enters evaluation.
+- A strict source majority must report values within a 2% numeric tolerance.
+  One malicious, unavailable, or ambiguous publisher cannot decide the result.
 - Agreement is judged on a **structured** result
   (`{status, observed_value, source_hash}`) with an explicit numeric
   tolerance, never on raw text or bit-exact equality.
@@ -71,8 +75,8 @@ not just documented convention:
 - The non-deterministic functions never touch a ledger field or move funds.
   Fund movement lives exclusively in deterministic methods (`_send_gen`,
   `_apply_consequence`) that are never called from inside a nondet block.
-- `submit_challenge_evidence()` only **appends** evidence — it never
-  rewrites the pinned `source_ref`.
+- `submit_challenge_evidence()` only **appends** evidence — it never rewrites
+  the pinned source set. Reevaluation requires three distinct evidence hosts.
 - `finalize_covenant_check()` refuses to apply an irreversible consequence
   until the challenge window has closed with no challenge pending.
 
@@ -94,7 +98,7 @@ never double-spend:
   are ever mutated, and only through this pattern.
 - Six named exit paths — compliant repayment, tier-1 interest step-up
   (no fund movement), tier-2 partial seizure, tier-3 full seizure/default,
-  lender-timeout reclaim, and pre-collateral cancellation — each
+  deterministic maturity settlement, and pre-collateral cancellation — each
   independently re-derive the amount to move from ledger state, never from
   a caller-supplied parameter.
 
@@ -103,13 +107,16 @@ never double-spend:
 | Component | URL / value |
 |---|---|
 | Frontend | https://covenant-watch.vercel.app |
-| Backend API | https://covenant-watch-backend.fly.dev |
-| Backend health | https://covenant-watch-backend.fly.dev/healthz |
-| Contract address | `0x601D14Fd4e99989883eeCC6a61dB6F0755AdF9a7` |
+| Backend API | https://covenant-watch-api.fly.dev |
+| Backend health | https://covenant-watch-api.fly.dev/healthz |
+| Contract address | `0x5c3Fe893aaaa9C0416F76812c3903Cf4AfA528A7` |
 | Network | GenLayer StudioNet |
 | Explorer | https://explorer-studio.genlayer.com/ |
 
-See [`DEPLOYMENT.md`](./DEPLOYMENT.md) for the full deploy runbook
+The verified production-gate run finalized loan `2` with a `COMPLIANT`
+result at `21000000.000000`, 3/3 independent publishers, three agreeing
+execution validators, repayment, and both settlement claims. See
+[`AUDIT.md`](./AUDIT.md) for findings and proof, [`DEPLOYMENT.md`](./DEPLOYMENT.md) for the full deploy runbook
 (contract, backend, frontend, Postgres, and a post-deploy verification
 checklist), and [`memory.md`](./memory.md) for the project's build history
 and design decisions.
@@ -133,9 +140,8 @@ tests/integration/            Real (non-mocked) tests — real HTTP fetch,
                                against a live GenLayer network.
 DEPLOYMENT.md                 Full deploy runbook (contract, backend,
                                frontend, Postgres, verification checklist).
-memory.md                     Running project-memory log: architecture
-                               decisions, what's been built and verified,
-                               and current known state.
+memory.md                     Current production and verification record;
+                               historical state belongs in Git history.
 ```
 
 ## Tech stack
@@ -196,9 +202,8 @@ cd frontend
 npm install
 cp .env.example .env.local
 # .env.local's defaults already point at the live deployed contract
-# (0x601D14Fd4e99989883eeCC6a61dB6F0755AdF9a7, studionet) and a working
-# Reown project id — only NEXT_PUBLIC_BACKEND_URL needs to match wherever
-# you're running backend/ (default http://localhost:8000)
+# (0x5c3Fe893aaaa9C0416F76812c3903Cf4AfA528A7, studionet) and a working
+# Reown project id for wallet connection
 
 npm run dev      # requires Node >=20.9
 npm run build    # production build

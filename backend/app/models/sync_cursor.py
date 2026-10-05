@@ -18,6 +18,9 @@ class SyncCursor(Base):
 
     shard_key: Mapped[str] = mapped_column(String(64), primary_key=True, default="default")
     last_synced_loan_id: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    # The cache has no economic meaning and must never mix IDs from two
+    # deployments, because every fresh contract starts loan IDs at zero.
+    contract_address: Mapped[str | None] = mapped_column(String(42), nullable=True)
     last_synced_block: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
     last_run_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_success_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

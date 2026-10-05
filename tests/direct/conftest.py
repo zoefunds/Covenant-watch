@@ -127,11 +127,16 @@ def onchain_covenant(source_ref="0x" + "11" * 20, field="signer_count", op=">=",
     }
 
 
-def offchain_covenant(url="https://example.org/attestation", field="reserve_ratio", op=">=",
+def offchain_covenant(url="https://one.example.org/attestation", field="reserve_ratio", op=">=",
                        threshold=1.0, tier1=500, tier2=5000):
+    sources = [
+        url,
+        "https://two.example.org/attestation",
+        "https://three.example.org/attestation",
+    ]
     return {
         "source_type": "OFFCHAIN",
-        "source_ref": url,
+        "source_refs": sources,
         "condition_field": field,
         "operator": op,
         "threshold": threshold,

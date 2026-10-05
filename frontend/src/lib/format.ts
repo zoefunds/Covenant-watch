@@ -8,7 +8,12 @@ const WEI_PER_GEN = 10n ** 18n;
 
 export function formatGen(wei: number | string | bigint | undefined | null, maxDecimals = 4): string {
   if (wei === undefined || wei === null) return "—";
-  const big = typeof wei === "bigint" ? wei : BigInt(Math.trunc(Number(wei)));
+  let big: bigint;
+  try {
+    big = typeof wei === "bigint" ? wei : BigInt(String(wei));
+  } catch {
+    return "—";
+  }
   const whole = big / WEI_PER_GEN;
   const frac = big % WEI_PER_GEN;
   if (frac === 0n) return `${whole.toString()} GEN`;

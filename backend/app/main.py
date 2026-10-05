@@ -35,6 +35,7 @@ _indexer_task: asyncio.Task | None = None
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global _stop_event, _indexer_task
+    # Settings validation has already rejected insecure production config.
     _stop_event = asyncio.Event()
     _indexer_task = asyncio.create_task(indexer_loop(_stop_event))
     log.info("app.startup", contract_configured=bool(settings.CONTRACT_ADDRESS))
