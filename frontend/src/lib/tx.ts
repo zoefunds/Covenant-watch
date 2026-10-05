@@ -28,6 +28,51 @@ const DONE_STATUSES = new Set(["FINALIZED"]);
 
 const sleep = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
+// StudioNet's public RPC occasionally returns an HTML gateway page instead of
+// JSON. That is a transport outage, not a chain result: keep the UI pending
+// and retry it. Deliberately keep this narrow so genuine contract failures
+// still reach the user immediately.
+function isTransientRpcError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /unexpected token '<'|<!doctype|not valid json|gateway|bad gateway|service unavailable|\b502\b|\b503\b|\b504\b|network error|fetch failed|econnreset|etimedout/i.test(message);
+}
+
+async function getTransactionWithRetry(client: any, hash: `0x${string}`): Promise<any> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 6; attempt++) {
+    try {
+      return await client.getTransaction({ hash });
+    } catch (error) {
+      if (!isTransientRpcError(error) || attempt === 5) throw error;
+      lastError = error;
+      await sleep(1_500 * (attempt + 1));
+    }
+  }
+  throw lastError;
+}
+
+async function waitForFinalizedReceipt(client: any, hash: `0x${string}`): Promise<any> {
+  let lastError: unknown;
+  // Each SDK wait owns a five-minute polling window. A gateway failure often
+  // aborts that wait immediately; retry only those failures within the same
+  // one-hour finality budget instead of presenting a false terminal failure.
+  for (let attempt = 0; attempt < 12; attempt++) {
+    try {
+      return await client.waitForTransactionReceipt({
+        hash,
+        status: TransactionStatus.FINALIZED,
+        retries: 100,
+        interval: 3000,
+      });
+    } catch (error) {
+      if (!isTransientRpcError(error) || attempt === 11) throw error;
+      lastError = error;
+      await sleep(Math.min(2_000 * (attempt + 1), 15_000));
+    }
+  }
+  throw lastError;
+}
+
 function enumName(raw: unknown, names: Record<string, string>): string | undefined {
   if (raw === undefined || raw === null || raw === "") return undefined;
   const value = String(raw);
@@ -65,7 +110,7 @@ async function waitForExecutionResult(client: any, hash: `0x${string}`, initialR
 
   for (let attempt = 0; attempt < 20 && (!executionResult || executionResult === ExecutionResult.NOT_VOTED); attempt++) {
     await sleep(1500);
-    transaction = await client.getTransaction({ hash });
+    transaction = await getTransactionWithRetry(client, hash);
     executionResult = executionResultOf(transaction);
   }
 
@@ -98,14 +143,7 @@ export async function runTrackedWrite(
   try {
     // The SDK defaults to ACCEPTED, which is still appealable. Contract state
     // must not drive UI updates until the transaction is irreversibly final.
-    const receipt = await client.waitForTransactionReceipt({
-      hash,
-      status: TransactionStatus.FINALIZED,
-      // Finality can substantially lag acceptance on an appealable
-      // intelligent-contract transaction. Keep polling for up to one hour.
-      retries: 1200,
-      interval: 3000,
-    });
+    const receipt = await waitForFinalizedReceipt(client, hash);
     // Prefer the SDK's decoded enum name; `status` may be the numeric on-chain
     // enum value (7 for FINALIZED) depending on provider/version.
     const rawStatus = (receipt as any)?.statusName ?? (receipt as any)?.status;
