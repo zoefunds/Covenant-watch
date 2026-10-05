@@ -80,12 +80,30 @@ function enumName(raw: unknown, names: Record<string, string>): string | undefin
 }
 
 function executionResultOf(transaction: any): string | undefined {
-  return enumName(
+  const explicit = enumName(
     transaction?.txExecutionResultName
       ?? transaction?.txExecutionResult
       ?? transaction?.tx_execution_result,
     executionResultNumberToName as Record<string, string>
   );
+  if (explicit) return explicit;
+
+  // StudioNet's FINALIZED receipt represents successful GenVM execution in
+  // the leader receipt (execution_result: "SUCCESS"), not necessarily in the
+  // SDK's optional txExecutionResult field. Treat the authoritative leader
+  // receipt as success immediately so callers can refresh finalized contract
+  // state instead of showing a false "unknown execution" error.
+  const consensus = transaction?.consensusData ?? transaction?.consensus_data;
+  const rawLeader = consensus?.leaderReceipt ?? consensus?.leader_receipt;
+  const leader = Array.isArray(rawLeader) ? rawLeader[0] : rawLeader;
+  const leaderResult = String(leader?.executionResult ?? leader?.execution_result ?? "").toUpperCase();
+  if (["SUCCESS", "FINISHED_WITH_RETURN", "RETURN"].includes(leaderResult)) {
+    return ExecutionResult.FINISHED_WITH_RETURN;
+  }
+  if (["ERROR", "FAILED", "FINISHED_WITH_ERROR", "REVERTED"].includes(leaderResult)) {
+    return ExecutionResult.FINISHED_WITH_ERROR;
+  }
+  return undefined;
 }
 
 function executionErrorOf(transaction: any): string | undefined {
@@ -95,6 +113,10 @@ function executionErrorOf(transaction: any): string | undefined {
   for (const receipt of receipts) {
     const detail = receipt?.genvm_result ?? receipt?.genvmResult ?? receipt?.error;
     if (typeof detail === "string" && detail.trim()) return detail.trim().slice(0, 500);
+    if (detail && typeof detail === "object") {
+      const message = detail.error_description ?? detail.errorDescription ?? detail.raw_error ?? detail.rawError ?? detail.stderr;
+      if (typeof message === "string" && message.trim()) return message.trim().slice(0, 500);
+    }
   }
   return undefined;
 }
