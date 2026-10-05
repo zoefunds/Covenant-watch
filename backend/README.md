@@ -73,7 +73,7 @@ fixed-window budget (`genlayer:rpc_budget:<epoch-hour>`), configured by
 
 Copy `.env.example` to `.env`. Important values:
 
-- `CONTRACT_ADDRESS=0xdDB5B5c8Ea31B8b81e9c66D1d8595CADfc2d0954`
+- `CONTRACT_ADDRESS=0x5aD6959559D0eF030a62C625b9071eBE655af74a`
 - `GENLAYER_NETWORK=studionet`
 - `DATABASE_URL` for PostgreSQL
 - `REDIS_URL` for shared coordination
@@ -103,7 +103,7 @@ Alternatively, `docker compose up --build` starts the packaged local services.
 ```bash
 cd backend
 fly secrets set \
-  CONTRACT_ADDRESS=0xdDB5B5c8Ea31B8b81e9c66D1d8595CADfc2d0954 \
+  CONTRACT_ADDRESS=0x5aD6959559D0eF030a62C625b9071eBE655af74a \
   -a covenant-watch-api
 fly deploy -a covenant-watch-api
 curl https://covenant-watch-api.fly.dev/healthz

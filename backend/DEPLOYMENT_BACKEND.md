@@ -9,7 +9,7 @@ observability credentials:
 
 ```bash
 fly secrets set -a covenant-watch-api \
-  CONTRACT_ADDRESS=0xdDB5B5c8Ea31B8b81e9c66D1d8595CADfc2d0954 \
+  CONTRACT_ADDRESS=0x5aD6959559D0eF030a62C625b9071eBE655af74a \
   GENLAYER_NETWORK=studionet \
   DATABASE_URL='postgresql+psycopg://...' \
   REDIS_URL='rediss://...' \

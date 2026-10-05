@@ -112,7 +112,7 @@ never double-spend:
 | Frontend | https://covenant-watch.vercel.app |
 | Backend API | https://covenant-watch-api.fly.dev |
 | Backend health | https://covenant-watch-api.fly.dev/healthz |
-| Contract address | `0xdDB5B5c8Ea31B8b81e9c66D1d8595CADfc2d0954` |
+| Contract address | `0x5aD6959559D0eF030a62C625b9071eBE655af74a` |
 | Network | GenLayer StudioNet |
 | Explorer | https://explorer-studio.genlayer.com/ |
 
@@ -205,7 +205,7 @@ cd frontend
 npm install
 cp .env.example .env.local
 # .env.local's defaults already point at the live deployed contract
-# (0xdDB5B5c8Ea31B8b81e9c66D1d8595CADfc2d0954, studionet) and a working
+# (0x5aD6959559D0eF030a62C625b9071eBE655af74a, studionet) and a working
 # Reown project id for wallet connection
 
 npm run dev      # requires Node >=20.9

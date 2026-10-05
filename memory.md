@@ -11,8 +11,8 @@ Git history when an older implementation record is needed.
 | Component | Current value |
 |---|---|
 | GenLayer network | StudioNet |
-| Audited contract | `0xdDB5B5c8Ea31B8b81e9c66D1d8595CADfc2d0954` |
-| Deployment transaction | `0x174bd3b3f36ad0d79bffa0a279ecbaed365cda9c5ed5c41560d2404ba9deba91` |
+| Audited contract | `0x5aD6959559D0eF030a62C625b9071eBE655af74a` |
+| Deployment transaction | `0x367cd6a76499da1ecf2024d0229595b62e199218d2b73bbf87a8c50aa6ae325a` |
 | Frontend | https://covenant-watch.vercel.app |
 | Vercel project | `covenant-watch` |
 | Backend | https://covenant-watch-api.fly.dev |
@@ -20,12 +20,13 @@ Git history when an older implementation record is needed.
 | Fly app | `covenant-watch-api` |
 | Fly region | `iad` |
 
-The contract deployment reached `FINALIZED` after three `AGREE` votes reached
-quorum; the remaining two validators were `IDLE`. Production frontend deployment `dpl_EL4ZawCqfvU6zhXNWVkeBQcA725v`
-was built with the audited address and promoted to the canonical alias. The Fly
-backend image `deployment-01M45A1V0MZHRXZQDBFMJD2607` passed its Alembic
-release command and rolling health checks. The application uses the same
-contract address.
+The contract deployment is `FINALIZED` with five `AGREE` votes and a successful
+GenVM deployment execution. Frontend deployment
+`covenant-watch-cnxxyo4en-adebiyi2002gmailcoms-projects.vercel.app` was
+promoted to production with this address. The Fly backend's rolling configuration
+update completed successfully with the same contract address. No application
+write or read call has been made against this fresh deployment; user acceptance
+testing starts from the production frontend.
 
 ## Contract authority and trust boundaries
 

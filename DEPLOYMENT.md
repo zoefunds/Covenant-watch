@@ -7,15 +7,17 @@ Last verified: 2026-10-05.
 | Component | Value |
 |---|---|
 | Network | GenLayer StudioNet |
-| Contract | `0xdDB5B5c8Ea31B8b81e9c66D1d8595CADfc2d0954` |
-| Contract deploy tx | `0x174bd3b3f36ad0d79bffa0a279ecbaed365cda9c5ed5c41560d2404ba9deba91` |
+| Contract | `0x5aD6959559D0eF030a62C625b9071eBE655af74a` |
+| Contract deploy tx | `0x367cd6a76499da1ecf2024d0229595b62e199218d2b73bbf87a8c50aa6ae325a` |
 | Frontend | https://covenant-watch.vercel.app |
 | Vercel project | `covenant-watch` |
 | Backend | https://covenant-watch-api.fly.dev |
 | Fly app | `covenant-watch-api` |
 
-The deploy transaction is `FINALIZED`; all five selected validators voted
-`AGREE` and GenVM execution returned successfully.
+The deployment is `FINALIZED`; all five selected validators voted `AGREE` and
+the GenVM deployment execution returned successfully.
+No post-deployment contract calls have been submitted; user acceptance testing
+is intentionally pending from the production frontend.
 
 ## 1. Verify source before deployment
 
