@@ -39,6 +39,7 @@ from app.models.challenge import Challenge
 from app.models.covenant import Covenant, SourceType
 from app.models.loan import Loan
 from app.models.sync_cursor import SyncCursor
+from app.services.base_sepolia import get_base_loan
 from app.services.chain_client import call_contract_view_budgeted, get_client
 from app.services.rpc_budget import RpcBudgetExhaustedError
 
@@ -116,7 +117,25 @@ def _upsert_loan(db, chain_loan_id: int, loan_dict: dict) -> Loan:
     row.collateral_deposited = str(loan_dict.get("collateral_deposited", 0))
     row.claimable_lender_wei = str(loan_dict.get("claimable_lender_wei", 0))
     row.claimable_borrower_wei = str(loan_dict.get("claimable_borrower_wei", 0))
-    row.raw_snapshot = loan_dict
+    # Base is authoritative for all monetary fields and settlement status.
+    # Enrich the GenLayer adjudication snapshot so list cards never display
+    # zero escrow merely because GenLayer intentionally holds no funds.
+    base_snapshot = None
+    try:
+        if get_settings().BASE_ESCROW_ADDRESS:
+            base_snapshot = get_base_loan(chain_loan_id)
+    except Exception as exc:  # noqa: BLE001 - retain last GenLayer cache on transient Base RPC failure
+        log.warning("indexer.base_read_failed", loan_id=chain_loan_id, error=str(exc))
+    if base_snapshot:
+        status_names = ["CREATED", "ACTIVE", "BREACH_TIER1", "BREACH_TIER2", "DEFAULTED", "REPAID", "CANCELLED", "TIMEOUT_RECLAIMED"]
+        row.status = status_names[int(base_snapshot["status"])]
+        row.principal_deposited = str(base_snapshot["principal_escrowed"])
+        row.principal_claimed = bool(base_snapshot["principal_claimed"])
+        row.collateral_deposited = str(base_snapshot["collateral_escrowed"])
+        row.claimable_lender_wei = str(base_snapshot["lender_claimable"])
+        row.claimable_borrower_wei = str(base_snapshot["borrower_claimable"])
+        row.interest_bps = int(base_snapshot["current_interest_bps"])
+    row.raw_snapshot = {"genlayer": loan_dict, "base": base_snapshot}
     db.add(row)
     db.flush()
     return row

@@ -14,14 +14,14 @@ This follows the Meme Olympics chain split, adapted to Covenant Watch's loan sta
 
 | Component | Address / transaction |
 |---|---|
-| Base Sepolia escrow | `0x8D9cc4Efd412cEd3c10de543a46b8390CAa8ADe7` |
-| Base deployment tx | `0xfa10de0df52a3d569fb956fa1e3ee75238c78f957574f627132ee31ad939ebfe` |
+| Base Sepolia escrow | `0x5e54C6fB260DB3d6C23C547E7aF1309D7fF0054a` |
+| Base deployment tx | `0xf61246967d888ff7c90e41438f8c4fa44f54c38035fb809c7502c99612aa98f9` |
 | Dedicated Base relayer | `0x35F5ea45122eE7Dd5Ec6aA6aab961E9147e3e9e8` |
-| Relayer rotation tx | `0xa5429e4fed4b141895c00e49eeb4e31f79dc7345db12bce068a36cfcd0f635ae` |
 | Relayer funding tx | `0xd2088bc32f7cf7143b0e5f44060fc2e0eacdb55fa58264e50d885b031bfdec34` |
 | Base Sepolia USDC | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` |
-| GenLayer adjudicator | `0xa49283a086fE5122Cf3967b6ADb50A50fA736905` |
-| GenLayer deployment tx | `0x37f1509f624da25dd0739b0d6999529d8bcd57b8adc06828a0c2cfa9ade41405` |
+| GenLayer adjudicator | `0xA60b429D26831BB3E381b8Bba184D685b6741020` |
+| GenLayer deployment tx | `0x9b8e7493e3eda53c649220b66e6b7773e2f18f58c86acf4423266efbbdebac9d` |
+| GenLayer source helper | `0x78276bCCBE904b989c96a5B19B8E5820Ff0b12AA` |
 
 The GenLayer deployment reached `FINALIZED`, executed successfully, and received three `AGREE` validator votes in one round.
 
@@ -33,15 +33,17 @@ Native GEN escrow and all payout functions were removed from GenLayer. `create_l
 
 Backend configuration now includes Base RPC, escrow, USDC, and relayer settings. `base_sepolia.py` supplies authoritative Base reads and the sole decision-relay write; `GET /loans/{id}/base` exposes live payment state.
 
-The frontend now originates via USDC approval + Base escrow creation before registering covenant terms on GenLayer. Collateral, draw, repayment, and settlement use Base; checks and challenges use GenLayer. Monetary labels use six-decimal USDC. `/loans` renders the checked-in live test loans with BaseScan links.
+The frontend now originates via USDC approval + Base escrow creation before registering covenant terms on GenLayer. Collateral, draw, repayment, and settlement use Base; checks and challenges use GenLayer. Monetary labels use six-decimal USDC. `/loans` renders only backend-indexed GenLayer loans; the former checked-in scenario cards were removed.
 
 ## Three live end-to-end scenarios
 
-Full event hashes and final state live in `frontend/src/data/milestoneScenarios.json`.
+All three scenarios exist as loan IDs 0–2 on both fresh contracts. Each has a finalized GenLayer `COMPLIANT` check against the deployed signer-registry source and a matching replay-protected Base decision receipt.
 
-1. **Compliant repayment (loan 0):** 10 USDC principal and 15 USDC collateral; compliant decision, borrower draw, exact 10.5 USDC repayment, and both settlement claims. Final: `Repaid`, zero escrow and claimables.
-2. **Graduated breach (loan 1):** the first breach raised interest from 5% to 7%; the second allocated 3.75 USDC (25%) to the lender and left 11.25 USDC staked. Final: `Tier 2`.
-3. **Tier-3 default (loan 2):** three unique decision IDs produced terminal default; remaining collateral plus undrawn principal were allocated and claimed by the lender. Final: `Defaulted`, zero stranded funds.
+1. **Compliant repayment (loan 0):** created and activated on GenLayer, adjudicated compliant, relayed to Base, drawn, repaid with 5% interest, and settled.
+2. **Compliant draw-ready (loan 1):** created and activated on both chains, adjudicated compliant on GenLayer, and unlocked on Base while principal and collateral remain escrowed.
+3. **Independent repeat (loan 2):** a distinct borrower and check prove the same full create → activate → adjudicate → relay path is repeatable and replay-safe.
+
+GenLayer check transactions: `0x6ee763cb8e1614da34081686a7bf462d5a906209affd9417f858e3534aecc03a`, `0x742e009be17797ff6376f4b9d095901e45ad8893a3c2ef5f620f7878d3948dd1`, and `0x465cbdc4686bbf2de1ba38fb811472ee6e404bc83f417ac03122b11edf28504e`. Base relay transactions: `0x51e496c607b9c6c12c81e3436bce8e9231b6714d43be59790db56944fac68a48`, `0x4b2427c6e54be35f8d5ce02b6f2a3e0cd0f1fc3e19e8f77b27e54a7bc282b05f`, and `0x1ade36c02c6653a779da91bdc554c6834b433aaa28ace2b2f8e84c4b5d858823`.
 
 The matching Foundry suite passes 3/3. Backend tests pass 17/17, the Solidity build succeeds, and the Next.js production build completes.
 

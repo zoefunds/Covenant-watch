@@ -47,10 +47,12 @@ def relay_finalized_decision(loan_id: int, check_id: int, decision: int, tier1_s
     w3 = _web3()
     account = w3.eth.account.from_key(settings.BASE_RELAYER_PRIVATE_KEY)
     contract = w3.eth.contract(address=Web3.to_checksum_address(settings.BASE_ESCROW_ADDRESS), abi=ESCROW_ABI)
+    gas_price = w3.eth.gas_price
+    priority_fee = min(w3.to_wei(1, "gwei"), gas_price)
     tx = contract.functions.applyDecision(loan_id, check_id, decision, tier1_step_bps, tier2_seizure_bps).build_transaction({
-        "from": account.address, "nonce": w3.eth.get_transaction_count(account.address),
-        "chainId": 84532, "gas": 350_000, "maxFeePerGas": w3.eth.gas_price * 2,
-        "maxPriorityFeePerGas": w3.to_wei(1, "gwei"),
+        "from": account.address, "nonce": w3.eth.get_transaction_count(account.address, "pending"),
+        "chainId": 84532, "gas": 350_000, "maxFeePerGas": gas_price * 2 + priority_fee,
+        "maxPriorityFeePerGas": priority_fee,
     })
     signed = account.sign_transaction(tx)
     tx_hash = w3.eth.send_raw_transaction(signed.raw_transaction)

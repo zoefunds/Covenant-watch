@@ -6,12 +6,12 @@ Last verified: 13 October 2026.
 
 | Component | Value |
 |---|---|
-| GenLayer StudioNet adjudicator | `0xa49283a086fE5122Cf3967b6ADb50A50fA736905` |
-| GenLayer deploy tx | `0x37f1509f624da25dd0739b0d6999529d8bcd57b8adc06828a0c2cfa9ade41405` |
-| Base Sepolia escrow | `0x8D9cc4Efd412cEd3c10de543a46b8390CAa8ADe7` |
-| Base deploy tx | `0xfa10de0df52a3d569fb956fa1e3ee75238c78f957574f627132ee31ad939ebfe` |
+| GenLayer StudioNet adjudicator | `0xA60b429D26831BB3E381b8Bba184D685b6741020` |
+| GenLayer deploy tx | `0x9b8e7493e3eda53c649220b66e6b7773e2f18f58c86acf4423266efbbdebac9d` |
+| GenLayer source helper | `0x78276bCCBE904b989c96a5B19B8E5820Ff0b12AA` |
+| Base Sepolia escrow | `0x5e54C6fB260DB3d6C23C547E7aF1309D7fF0054a` |
+| Base deploy tx | `0xf61246967d888ff7c90e41438f8c4fa44f54c38035fb809c7502c99612aa98f9` |
 | Dedicated Base relayer | `0x35F5ea45122eE7Dd5Ec6aA6aab961E9147e3e9e8` |
-| Relayer rotation tx | `0xa5429e4fed4b141895c00e49eeb4e31f79dc7345db12bce068a36cfcd0f635ae` |
 | Relayer funding tx | `0xd2088bc32f7cf7143b0e5f44060fc2e0eacdb55fa58264e50d885b031bfdec34` |
 | Base Sepolia USDC | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` |
 | Frontend | https://covenant-watch.vercel.app |
@@ -79,10 +79,10 @@ Deploy backend with `fly deploy -a covenant-watch-api` and frontend with
 
 ## Live E2E evidence
 
-The authorized live runner is `tests/e2e/base_live.py`. It requires the
-throwaway deployer key only through `DEPLOYER_PRIVATE_KEY`; never write the key
-to a file. `tests/e2e/report_live.py` reads confirmed event logs and regenerates
-`frontend/src/data/milestoneScenarios.json` without a key.
+The Base half of the paired live runner is `tests/e2e/cross_chain_live.py`.
+It requires the throwaway deployer key only through `DEPLOYER_PRIVATE_KEY`;
+never write the key to a file. GenLayer writes use the CLI and must be checked
+for `execution_result: SUCCESS` and `FINALIZED`, not merely `ACCEPTED`.
 
 ## Relay requirements
 

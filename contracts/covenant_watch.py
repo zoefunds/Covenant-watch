@@ -422,7 +422,12 @@ def _validate_covenant_definition(cov: dict, index: int) -> dict:
     _require(source_type in VALID_SOURCE_TYPES,
              f"covenant[{index}].source_type must be one of {sorted(VALID_SOURCE_TYPES)}")
 
-    source_ref = str(cov.get("source_ref", "")).strip()
+    source_ref_raw = cov.get("source_ref", "")
+    source_ref = (
+        source_ref_raw.as_hex
+        if isinstance(source_ref_raw, Address)
+        else str(source_ref_raw).strip()
+    )
     if source_type == SOURCE_OFFCHAIN:
         raw_sources = cov.get("source_refs")
         _require(isinstance(raw_sources, list),
@@ -495,6 +500,15 @@ def _validate_covenant_definition(cov: dict, index: int) -> dict:
         "tier1_interest_step_up_bps": tier1_bps,
         "tier2_seizure_bps": tier2_bps,
     }
+
+
+def _transaction_hash_text(value) -> str:
+    """Normalize SDK/CLI encodings of a 32-byte EVM transaction hash."""
+    if isinstance(value, int):
+        return "0x" + format(value, "064x")
+    if isinstance(value, bytes):
+        return "0x" + value.hex()
+    return str(value).strip()
 
 
 def _handle_leader_error(leaders_res, leader_fn) -> bool:
@@ -1004,7 +1018,7 @@ Respond with ONLY a JSON object, no markdown, with exactly these keys:
     @gl.public.write
     def create_loan(
         self,
-        borrower: str,
+        borrower: Address,
         principal_wei: int,
         collateral_wei: int,
         base_interest_bps: int,
@@ -1036,7 +1050,7 @@ Respond with ONLY a JSON object, no markdown, with exactly these keys:
         _require(collateral_wei > 0, "collateral_wei must be positive")
         _require(0 <= base_interest_bps <= 100_00, "base_interest_bps out of sane range")
         _require(maturity_ts > now_ts, "maturity_ts must be in the future")
-        borrower_addr = Address(borrower)
+        borrower_addr = borrower if isinstance(borrower, Address) else Address(borrower)
         _require(borrower_addr != sender, "lender and borrower must differ")
 
         window = challenge_window_seconds if challenge_window_seconds > 0 else DEFAULT_CHALLENGE_WINDOW_SECONDS
@@ -1045,8 +1059,12 @@ Respond with ONLY a JSON object, no markdown, with exactly these keys:
 
         try:
             _require(len(covenants_json) <= MAX_COVENANTS_JSON_LEN,
-                     f"covenants_json exceeds {MAX_COVENANTS_JSON_LEN} characters")
-            raw_covenants = json.loads(covenants_json)
+                     f"covenants_json exceeds {MAX_COVENANTS_JSON_LEN} characters/items")
+            raw_covenants = (
+                covenants_json
+                if isinstance(covenants_json, list)
+                else json.loads(covenants_json)
+            )
         except (json.JSONDecodeError, ValueError, TypeError):
             raise gl.vm.UserError(ERR_EXPECTED + "covenants_json is not valid JSON")
         _require(isinstance(raw_covenants, list), "covenants_json must be a JSON array")
@@ -1118,7 +1136,7 @@ Respond with ONLY a JSON object, no markdown, with exactly these keys:
         _require(sender == loan.borrower, "only the designated borrower may lock collateral")
         _require(int(loan.status) == LOAN_CREATED, "loan is not awaiting collateral")
         _require(self._now_ts() < int(loan.maturity_ts), "cannot lock collateral after loan maturity")
-        tx_hash = base_tx_hash.strip()
+        tx_hash = _transaction_hash_text(base_tx_hash)
         _require(len(tx_hash) == 66 and tx_hash.startswith("0x"), "invalid Base transaction hash")
         self.base_activation_tx[u32(loan_id)] = tx_hash
         loan.status = u8(LOAN_ACTIVE)
@@ -1314,7 +1332,7 @@ Respond with ONLY a JSON object, no markdown, with exactly these keys:
         _require(gl.message.sender_address == self.owner, "only the relayer owner may mark a relay")
         key = u32(check_id)
         _require(self.decision_relay_tx.get(key) is None, "decision already marked relayed")
-        tx_hash = base_tx_hash.strip()
+        tx_hash = _transaction_hash_text(base_tx_hash)
         _require(len(tx_hash) == 66 and tx_hash.startswith("0x"), "invalid Base transaction hash")
         self.decision_relay_tx[key] = tx_hash
 

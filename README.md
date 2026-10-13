@@ -10,8 +10,8 @@ Covenant Watch is a two-chain covenant-monitoring loan protocol. Base Sepolia ho
 |---|---|
 | Frontend | https://covenant-watch.vercel.app |
 | Backend | https://covenant-watch-api.fly.dev |
-| GenLayer adjudicator | `0xa49283a086fE5122Cf3967b6ADb50A50fA736905` |
-| Base Sepolia escrow | `0x8D9cc4Efd412cEd3c10de543a46b8390CAa8ADe7` |
+| GenLayer adjudicator | `0xA60b429D26831BB3E381b8Bba184D685b6741020` |
+| Base Sepolia escrow | `0x5e54C6fB260DB3d6C23C547E7aF1309D7fF0054a` |
 | Circle Base Sepolia USDC | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` |
 
 See [milestone.md](./milestone.md) for deployment transactions, three live USDC E2E scenarios, final states, and the full implementation record.
@@ -43,7 +43,7 @@ contracts/base/CovenantWatchEscrow.sol  Base Sepolia USDC contract
 backend/                                FastAPI cache, SIWE, Base reader/relay
 frontend/                               Next.js wallet application
 test/                                   Foundry economic scenario tests
-tests/e2e/                               Live Base runner and evidence exporter
+tests/e2e/                               Live paired-chain E2E runner
 milestone.md                             Milestone implementation and receipts
 DEPLOYMENT.md                            Deployment and operations runbook
 ```
@@ -56,6 +56,6 @@ backend/.venv/bin/pytest -q backend/tests
 cd frontend && npm run lint && npx tsc --noEmit && npm run build -- --webpack
 ```
 
-Live evidence is checked in at `frontend/src/data/milestoneScenarios.json` and rendered under `/loans`.
+The `/loans` page is populated only from the backend's indexed GenLayer deployment; no checked-in loan fixtures are rendered.
 
 Copy `backend/.env.example` and `frontend/.env.example` for configuration. Keep `BASE_RELAYER_PRIVATE_KEY` only in backend secret storage. Full production steps are in [DEPLOYMENT.md](./DEPLOYMENT.md).
