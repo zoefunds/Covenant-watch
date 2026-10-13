@@ -5,13 +5,13 @@
 ## Current deployment
 
 - Network: Base Sepolia, chain ID `84532`
-- Contract: `0x6b806484E938E8Bf5eD65D1841543931240834ef`
-- Deployment transaction: `0x7240cc53bb05537aee0ced6675a4760d14204bbdd205676e2b1b8c34c44b5d1f`
+- Contract: `0x37913648E096a6E8e97A2f5F31473e31c90c2Fb2`
+- Deployment transaction: `0x3ffd97e520394dc4577420b3df987711bb857f8a305e7868fc6674075dfd8dfb`
 - Circle test USDC: `0x036CbD53842c5426634e7929541eC2318f3dCF7e`
-- Relayer: `0x35F5ea45122eE7Dd5Ec6aA6aab961E9147e3e9e8`
+- Relayer: `0x7401c129EDfc26E68FE19309fE461eb3Db1058Eb`
 - Amount units: USDC base units with 6 decimals
-- Initial/current documented loan count: `0`
+- Live acceptance loan count: `3`
 
 The relayer can only call `applyDecision`; `(loanId, checkId)` replay protection prevents the same adjudication from being applied twice. User wallets call all value-moving lifecycle functions directly.
 
-Build and test locally with `forge build` and `forge test -vv`. See root `DEPLOYMENT.md` for deployment and acceptance procedures. No live E2E loan has been run on the current address.
+Build and test locally with `forge build` and `forge test -vv`. See root `DEPLOYMENT.md` for deployment and acceptance procedures.

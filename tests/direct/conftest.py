@@ -1,4 +1,5 @@
 import json
+import hashlib
 import sys
 
 # ---------------------------------------------------------------------------
@@ -131,12 +132,17 @@ def offchain_covenant(url="https://one.example.org/attestation", field="reserve_
                        threshold=1.0, tier1=500, tier2=5000):
     sources = [
         url,
-        "https://two.example.org/attestation",
-        "https://three.example.org/attestation",
+        "https://two.example.net/attestation",
+        "https://three.example.com/attestation",
     ]
     return {
         "source_type": "OFFCHAIN",
         "source_refs": sources,
+        "challenge_source_refs": [
+            "https://four.challenge-one.org/attestation",
+            "https://five.challenge-two.net/attestation",
+            "https://six.challenge-three.com/attestation",
+        ],
         "condition_field": field,
         "operator": op,
         "threshold": threshold,
@@ -150,7 +156,37 @@ def covenants_json(*covs):
     return json.dumps(list(covs))
 
 
-def mock_offchain_verdict(direct_vm, status="COMPLIANT", value=1.2, note="ok", url_pattern=".*example\\.org.*"):
+def _pack_u(value, size): return int(value).to_bytes(size, "big")
+def _pack_text(value):
+    raw = value.encode()
+    return _pack_u(len(raw), 4) + raw
+
+
+def create_args(lender, borrower, covenants, base_loan_id=0, maturity=4_102_444_800, window=0):
+    lender_hex, borrower_hex = to_hex(lender), to_hex(borrower)
+    challenge_window = window or 48 * 60 * 60
+    drawdown = maturity - DAY
+    grace = DAY
+    commitments = []
+    for index, raw in enumerate(covenants):
+        source_type = raw["source_type"]
+        source_ref = json.dumps(raw["source_refs"], separators=(",", ":")) if source_type == "OFFCHAIN" else raw["source_ref"]
+        challenge_ref = json.dumps(raw.get("challenge_source_refs", []), separators=(",", ":"))
+        preimage = b"COVENANT_WATCH_COVENANT_V2" + _pack_u(index, 4)
+        for value in (source_type, source_ref, challenge_ref, raw["condition_field"], raw["operator"], raw["description"]): preimage += _pack_text(value)
+        preimage += round(float(raw["threshold"]) * 1_000_000).to_bytes(32, "big", signed=True)
+        preimage += _pack_u(raw["tier1_interest_step_up_bps"], 4) + _pack_u(raw["tier2_seizure_bps"], 4)
+        commitments.append("0x" + hashlib.sha256(preimage).hexdigest())
+    preimage = b"COVENANT_WATCH_LOAN_V2" + _pack_u(base_loan_id, 32)
+    preimage += bytes.fromhex(lender_hex[2:]) + bytes.fromhex(borrower_hex[2:])
+    preimage += _pack_u(1_000_000, 32) + _pack_u(2_000_000, 32) + _pack_u(500, 4)
+    preimage += _pack_u(maturity, 8) + _pack_u(drawdown, 8) + _pack_u(grace, 4) + _pack_u(len(commitments), 2)
+    for item in commitments: preimage += bytes.fromhex(item[2:])
+    commitment = "0x" + hashlib.sha256(preimage).hexdigest()
+    return [base_loan_id, commitment, borrower_hex, 1_000_000, 2_000_000, 500, maturity, drawdown, grace, covenants_json(*covenants), challenge_window]
+
+
+def mock_offchain_verdict(direct_vm, status="COMPLIANT", value=1.2, note="ok", url_pattern=".*example\\..*"):
     """Mocked LLM response for the OFFCHAIN evaluation path — labeled MOCKED,
     never a real live fetch/LLM call. Also mocks the underlying web render
     call so the fetch itself always 'succeeds' in these direct-mode tests."""

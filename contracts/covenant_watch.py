@@ -131,8 +131,9 @@ VAGUE_CONDITION_FRAGMENTS: tuple = (
     "commercially reasonable",
 )
 
-# ---- Challenge window bounds (spec: 6h - 7d, default 48h) --------------------
-MIN_CHALLENGE_WINDOW_SECONDS: int = 6 * 60 * 60
+# ---- Challenge window bounds (StudioNet permits a 5-minute acceptance window;
+# production UI defaults to 48h and mainnet policy should raise this floor.) ----
+MIN_CHALLENGE_WINDOW_SECONDS: int = 5 * 60
 MAX_CHALLENGE_WINDOW_SECONDS: int = 7 * 24 * 60 * 60
 DEFAULT_CHALLENGE_WINDOW_SECONDS: int = 48 * 60 * 60
 
@@ -214,8 +215,11 @@ class Covenant:
     only ever set once, at creation."""
     id: u32
     loan_id: u32
+    loan_covenant_index: u32
+    commitment: str
     source_type: str          # SOURCE_ONCHAIN | SOURCE_OFFCHAIN
     source_ref: str           # contract address (onchain) or https URL (offchain) — pinned forever
+    challenge_source_ref: str # pre-authorized challenge publisher set, pinned forever
     condition_field: str      # e.g. "signer_count", "reserve_ratio", "paused"
     operator: str             # one of VALID_OPERATORS
     threshold_scaled: i256    # threshold * VALUE_SCALE
@@ -260,6 +264,8 @@ class CheckRecord:
 @dataclass
 class Loan:
     id: u32
+    base_loan_id: u256
+    commitment: str
     lender: Address
     borrower: Address
     # ---- TERMS (immutable once set at creation / lock) ----
@@ -267,6 +273,8 @@ class Loan:
     collateral_wei: u256
     base_interest_bps: u32
     maturity_ts: u64
+    drawdown_deadline_ts: u64
+    settlement_grace_seconds: u32
     challenge_window_seconds: u64
     covenant_count: u32
     # ---- LEDGER (mutable — the only fields payout math reads) ----
@@ -389,6 +397,50 @@ def _url_hostname(url: str) -> str:
     return (authority.rsplit(":", 1)[0] if authority.count(":") == 1 else authority).lower()
 
 
+def _publisher_identity(url: str) -> str:
+    """Conservative publisher identity used to reject attacker-controlled
+    sibling subdomains. The final two DNS labels are treated as one publisher.
+    Creation also requires exact preauthorization of every challenge URL."""
+    host = _url_hostname(url).removeprefix("www.")
+    labels = [part for part in host.split(".") if part]
+    return ".".join(labels[-2:]) if len(labels) >= 2 else host
+
+
+def _pack_u(value: int, size: int) -> bytes:
+    return int(value).to_bytes(size, byteorder="big", signed=False)
+
+
+def _pack_text(value: str) -> bytes:
+    raw = value.encode("utf-8")
+    return _pack_u(len(raw), 4) + raw
+
+
+def _covenant_commitment(index: int, cov: dict) -> str:
+    preimage = b"COVENANT_WATCH_COVENANT_V2" + _pack_u(index, 4)
+    for field in ("source_type", "source_ref", "challenge_source_ref", "condition_field", "operator", "description"):
+        preimage += _pack_text(str(cov[field]))
+    preimage += int(cov["threshold_scaled"]).to_bytes(32, byteorder="big", signed=True)
+    preimage += _pack_u(int(cov["tier1_interest_step_up_bps"]), 4)
+    preimage += _pack_u(int(cov["tier2_seizure_bps"]), 4)
+    return "0x" + hashlib.sha256(preimage).hexdigest()
+
+
+def _loan_commitment(base_loan_id: int, lender: Address, borrower: Address,
+                     principal: int, collateral: int, interest_bps: int,
+                     maturity: int, drawdown_deadline: int, settlement_grace: int,
+                     covenant_commitments: list[str]) -> str:
+    preimage = b"COVENANT_WATCH_LOAN_V2"
+    preimage += _pack_u(base_loan_id, 32)
+    preimage += bytes.fromhex(lender.as_hex[2:]) + bytes.fromhex(borrower.as_hex[2:])
+    preimage += _pack_u(principal, 32) + _pack_u(collateral, 32)
+    preimage += _pack_u(interest_bps, 4) + _pack_u(maturity, 8)
+    preimage += _pack_u(drawdown_deadline, 8) + _pack_u(settlement_grace, 4)
+    preimage += _pack_u(len(covenant_commitments), 2)
+    for commitment in covenant_commitments:
+        preimage += bytes.fromhex(commitment[2:])
+    return "0x" + hashlib.sha256(preimage).hexdigest()
+
+
 def _parse_offchain_sources(source_ref: str) -> list[str]:
     """Decode the canonical, creation-time-pinned independent source set."""
     try:
@@ -442,14 +494,34 @@ def _validate_covenant_definition(cov: dict, index: int) -> dict:
         hosts = [_url_hostname(url) for url in sources]
         _require(len(set(hosts)) == len(hosts),
                  f"covenant[{index}].source_refs must use distinct publisher hostnames")
+        identities = [_publisher_identity(url) for url in sources]
+        _require(len(set(identities)) == len(identities),
+                 f"covenant[{index}].source_refs must use distinct publisher identities")
         source_ref = json.dumps(sources, separators=(",", ":"))
         _require(len(source_ref) <= MAX_SOURCE_REF_LEN,
                  f"covenant[{index}].source_refs exceed the encoded {MAX_SOURCE_REF_LEN}-character limit")
+        raw_challenge_sources = cov.get("challenge_source_refs")
+        _require(isinstance(raw_challenge_sources, list),
+                 f"covenant[{index}].challenge_source_refs must preauthorize independent challenge publishers")
+        challenge_sources = [str(item).strip() for item in raw_challenge_sources]
+        _require(MIN_OFFCHAIN_SOURCES <= len(challenge_sources) <= MAX_OFFCHAIN_SOURCES,
+                 f"covenant[{index}].challenge_source_refs must contain {MIN_OFFCHAIN_SOURCES}..{MAX_OFFCHAIN_SOURCES} URLs")
+        _require(all(_is_safe_https_url(url) for url in challenge_sources),
+                 f"covenant[{index}].challenge_source_refs must contain only public HTTPS URLs")
+        challenge_identities = [_publisher_identity(url) for url in challenge_sources]
+        _require(len(set(challenge_identities)) == len(challenge_identities),
+                 f"covenant[{index}].challenge_source_refs must use distinct publisher identities")
+        _require(set(identities).isdisjoint(set(challenge_identities)),
+                 f"covenant[{index}] primary and challenge publishers must be independent")
+        challenge_source_ref = json.dumps(challenge_sources, separators=(",", ":"))
+        _require(len(challenge_source_ref) <= MAX_SOURCE_REF_LEN,
+                 f"covenant[{index}].challenge_source_refs exceed the encoded limit")
     else:
         _require(0 < len(source_ref) <= MAX_SOURCE_REF_LEN,
                   f"covenant[{index}].source_ref must be 1..{MAX_SOURCE_REF_LEN} chars")
         _require(bool(re.fullmatch(r"0x[0-9a-fA-F]{40}", source_ref)),
                   f"covenant[{index}].source_ref must be a 20-byte contract address")
+        challenge_source_ref = "[]"
 
     condition_field = str(cov.get("condition_field", "")).strip()
     _require(0 < len(condition_field) <= MAX_CONDITION_FIELD_LEN,
@@ -493,6 +565,7 @@ def _validate_covenant_definition(cov: dict, index: int) -> dict:
     return {
         "source_type": source_type,
         "source_ref": source_ref,
+        "challenge_source_ref": challenge_source_ref,
         "condition_field": condition_field,
         "operator": operator,
         "threshold_scaled": _scale(threshold),
@@ -564,6 +637,7 @@ class CovenantWatch(gl.Contract):
     # Base Sepolia transaction hashes are audit/idempotency markers only.
     base_activation_tx: TreeMap[u32, str]
     decision_relay_tx: TreeMap[u32, str]
+    base_loan_ids_used: TreeMap[u256, bool]
 
     def __init__(self):
         self.owner = gl.message.sender_address
@@ -608,6 +682,9 @@ class CovenantWatch(gl.Contract):
         This is contract state, not a frontend convention: collateral alone
         never authorizes the borrower to draw escrowed principal.
         """
+        loan = self._get_loan(loan_id)
+        if self._now_ts() > int(loan.drawdown_deadline_ts):
+            return False
         covenant_ids = self.loan_covenant_ids.get(u32(loan_id))
         if covenant_ids is None or len(covenant_ids) == 0:
             return False
@@ -889,18 +966,35 @@ Respond with ONLY a JSON object, no markdown, with exactly these keys:
         # pinned URL. Challenge rounds bind to the frozen primary hash and
         # independently render every new evidence URL.
         source_urls = _parse_offchain_sources(covenant.source_ref)
-        # A challenge cannot replace a corroborated source set with one party's
-        # assertion. It becomes authoritative only after at least three
-        # additive URLs from distinct publisher hosts form their own majority.
+        # A challenge never replaces the original source set. Validators
+        # re-evaluate the original publishers and an independently
+        # pre-authorized support set. A breach may be corrected only when both
+        # sets independently establish compliance and the original bytes still
+        # match the content commitment pinned by the challenged check.
         if len(extra_evidence) >= MIN_OFFCHAIN_SOURCES:
             evidence_urls = [str(item.get("url", "")) for item in extra_evidence]
-            hosts = [_url_hostname(url) for url in evidence_urls]
-            if len(set(hosts)) == len(hosts):
-                challenged = self._evaluate_source_set(covenant, evidence_urls)
-                challenged["source_hash"] = _hash_text(
-                    _hash_text(pinned_source_text) + ":" + challenged["source_hash"]
-                )
-                return challenged
+            primary = self._evaluate_source_set(covenant, source_urls)
+            supporting = self._evaluate_source_set(covenant, evidence_urls)
+            reconciled_hash = _hash_text(primary["source_hash"] + ":" + supporting["source_hash"])
+            if (
+                primary["source_hash"] == pinned_source_text
+                and int(primary["status"]) == COVENANT_COMPLIANT
+                and int(supporting["status"]) == COVENANT_COMPLIANT
+            ):
+                return {
+                    "status": COVENANT_COMPLIANT,
+                    "observed_value_scaled": int(primary["observed_value_scaled"]),
+                    "observed_note": "challenge reconciled: original and preauthorized publishers agree",
+                    "source_hash": reconciled_hash,
+                    "source_excerpt": primary["source_excerpt"] + supporting["source_excerpt"],
+                }
+            return {
+                "status": COVENANT_BREACH,
+                "observed_value_scaled": int(primary.get("observed_value_scaled", 0)),
+                "observed_note": "challenge did not reconcile the original committed breach",
+                "source_hash": reconciled_hash,
+                "source_excerpt": primary["source_excerpt"] + supporting["source_excerpt"],
+            }
         if pinned_source_text:
             return {
                 "status": COVENANT_INCONCLUSIVE,
@@ -1018,11 +1112,15 @@ Respond with ONLY a JSON object, no markdown, with exactly these keys:
     @gl.public.write
     def create_loan(
         self,
+        base_loan_id: int,
+        loan_commitment: str,
         borrower: Address,
         principal_wei: int,
         collateral_wei: int,
         base_interest_bps: int,
         maturity_ts: int,
+        drawdown_deadline_ts: int,
+        settlement_grace_seconds: int,
         covenants_json: str,
         challenge_window_seconds: int = 0,
     ) -> int:
@@ -1050,6 +1148,13 @@ Respond with ONLY a JSON object, no markdown, with exactly these keys:
         _require(collateral_wei > 0, "collateral_wei must be positive")
         _require(0 <= base_interest_bps <= 100_00, "base_interest_bps out of sane range")
         _require(maturity_ts > now_ts, "maturity_ts must be in the future")
+        _require(now_ts < drawdown_deadline_ts <= maturity_ts,
+                 "drawdown deadline must be in the future and no later than maturity")
+        _require(60 <= settlement_grace_seconds <= MATURITY_GRACE_SECONDS,
+                 "settlement grace must be 60 seconds..14 days")
+        _require(base_loan_id >= 0, "base_loan_id must be non-negative")
+        _require(self.base_loan_ids_used.get(u256(base_loan_id)) is not True,
+                 "base_loan_id is already paired")
         borrower_addr = borrower if isinstance(borrower, Address) else Address(borrower)
         _require(borrower_addr != sender, "lender and borrower must differ")
 
@@ -1072,6 +1177,20 @@ Respond with ONLY a JSON object, no markdown, with exactly these keys:
                   f"a loan needs 1..{MAX_COVENANTS_PER_LOAN} covenants")
 
         validated = [_validate_covenant_definition(c, i) for i, c in enumerate(raw_covenants)]
+        covenant_commitments = [_covenant_commitment(i, cov) for i, cov in enumerate(validated)]
+        expected_commitment = _loan_commitment(
+            base_loan_id, sender, borrower_addr, principal, collateral_wei,
+            base_interest_bps, maturity_ts, drawdown_deadline_ts,
+            settlement_grace_seconds, covenant_commitments,
+        )
+        supplied_commitment = (
+            "0x" + format(loan_commitment, "064x")
+            if isinstance(loan_commitment, int)
+            else str(loan_commitment).strip().strip('"').lower()
+        )
+        _require(bool(re.fullmatch(r"0x[0-9a-f]{64}", supplied_commitment)), "invalid loan commitment")
+        _require(supplied_commitment == expected_commitment, "Base/GenLayer loan commitment mismatch")
+        self.base_loan_ids_used[u256(base_loan_id)] = True
 
         loan_id = int(self.loan_count)
         self.loan_count = u64(loan_id + 1)
@@ -1079,12 +1198,16 @@ Respond with ONLY a JSON object, no markdown, with exactly these keys:
 
         self.loans[lid] = Loan(
             id=lid,
+            base_loan_id=u256(base_loan_id),
+            commitment=supplied_commitment,
             lender=sender,
             borrower=borrower_addr,
             principal_wei=u256(principal),
             collateral_wei=u256(collateral_wei),
             base_interest_bps=u32(base_interest_bps),
             maturity_ts=u64(maturity_ts),
+            drawdown_deadline_ts=u64(drawdown_deadline_ts),
+            settlement_grace_seconds=u32(settlement_grace_seconds),
             challenge_window_seconds=u64(window),
             covenant_count=u32(len(validated)),
             principal_deposited=u256(0),
@@ -1101,15 +1224,18 @@ Respond with ONLY a JSON object, no markdown, with exactly these keys:
         self.loan_covenant_ids[lid] = []
         self.loan_check_ids[lid] = []
 
-        for cov in validated:
+        for index, cov in enumerate(validated):
             covenant_id = int(self.covenant_count)
             self.covenant_count = u64(covenant_id + 1)
             cvid = u32(covenant_id)
             self.covenants[cvid] = Covenant(
                 id=cvid,
                 loan_id=lid,
+                loan_covenant_index=u32(index),
+                commitment=covenant_commitments[index],
                 source_type=cov["source_type"],
                 source_ref=cov["source_ref"],
+                challenge_source_ref=cov["challenge_source_ref"],
                 condition_field=cov["condition_field"],
                 operator=cov["operator"],
                 threshold_scaled=i256(cov["threshold_scaled"]),
@@ -1257,12 +1383,20 @@ Respond with ONLY a JSON object, no markdown, with exactly these keys:
         _require(_is_safe_https_url(url), "evidence_url must be a public https URL")
         note = evidence_note.strip()
         _require(0 < len(note) <= MAX_EVIDENCE_NOTE_LEN, f"evidence_note must be 1..{MAX_EVIDENCE_NOTE_LEN} chars")
-        existing_hosts = {
-            _url_hostname(str(check.challenge_evidence_urls[i]))
+        authorized_urls = _parse_offchain_sources(covenant.challenge_source_ref)
+        _require(url in authorized_urls,
+                 "challenge URL was not preauthorized in the frozen covenant")
+        original_identities = {
+            _publisher_identity(item) for item in _parse_offchain_sources(covenant.source_ref)
+        }
+        _require(_publisher_identity(url) not in original_identities,
+                 "challenge publisher is not independent from the original source set")
+        existing_publishers = {
+            _publisher_identity(str(check.challenge_evidence_urls[i]))
             for i in range(len(check.challenge_evidence_urls))
         }
-        _require(_url_hostname(url) not in existing_hosts,
-                 "challenge evidence must use a distinct publisher hostname")
+        _require(_publisher_identity(url) not in existing_publishers,
+                 "challenge evidence must use a distinct publisher identity")
 
         check.challenge_evidence_urls.append(url)
         check.challenge_evidence_notes.append(note)
@@ -1343,6 +1477,8 @@ Respond with ONLY a JSON object, no markdown, with exactly these keys:
     def _loan_dict(self, loan: Loan) -> dict:
         return {
             "id": int(loan.id),
+            "base_loan_id": int(loan.base_loan_id),
+            "commitment": loan.commitment,
             "lender": loan.lender.as_hex,
             "borrower": loan.borrower.as_hex,
             "principal_wei": int(loan.principal_wei),
@@ -1350,6 +1486,8 @@ Respond with ONLY a JSON object, no markdown, with exactly these keys:
             "base_interest_bps": int(loan.base_interest_bps),
             "current_interest_bps": int(loan.current_interest_bps),
             "maturity_ts": int(loan.maturity_ts),
+            "drawdown_deadline_ts": int(loan.drawdown_deadline_ts),
+            "settlement_grace_seconds": int(loan.settlement_grace_seconds),
             "challenge_window_seconds": int(loan.challenge_window_seconds),
             "covenant_count": int(loan.covenant_count),
             "principal_deposited": int(loan.principal_deposited),
@@ -1367,10 +1505,16 @@ Respond with ONLY a JSON object, no markdown, with exactly these keys:
         return {
             "id": int(covenant.id),
             "loan_id": int(covenant.loan_id),
+            "loan_covenant_index": int(covenant.loan_covenant_index),
+            "commitment": covenant.commitment,
             "source_type": covenant.source_type,
             "source_ref": covenant.source_ref,
             "source_refs": (
                 _parse_offchain_sources(covenant.source_ref)
+                if covenant.source_type == SOURCE_OFFCHAIN else []
+            ),
+            "challenge_source_refs": (
+                _parse_offchain_sources(covenant.challenge_source_ref)
                 if covenant.source_type == SOURCE_OFFCHAIN else []
             ),
             "condition_field": covenant.condition_field,

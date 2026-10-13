@@ -13,13 +13,18 @@ const escrowAbi = [
     { name: "collateralEscrowed", type: "uint256" }, { name: "lenderClaimable", type: "uint256" },
     { name: "borrowerClaimable", type: "uint256" }, { name: "baseInterestBps", type: "uint32" },
     { name: "currentInterestBps", type: "uint32" }, { name: "maturity", type: "uint64" },
-    { name: "breachTier", type: "uint8" }, { name: "requiredCompliantChecks", type: "uint16" },
-    { name: "compliantChecks", type: "uint16" }, { name: "status", type: "uint8" }, { name: "principalClaimed", type: "bool" }
+    { name: "drawdownDeadline", type: "uint64" }, { name: "settlementGrace", type: "uint32" },
+    { name: "breachTier", type: "uint8" }, { name: "covenantCount", type: "uint16" },
+    { name: "compliantCovenants", type: "uint16" }, { name: "status", type: "uint8" },
+    { name: "principalClaimed", type: "bool" }, { name: "commitment", type: "bytes32" }
   ] },
   { type: "function", name: "createLoan", stateMutability: "nonpayable", inputs: [
     { name: "borrower", type: "address" }, { name: "principal", type: "uint256" },
     { name: "collateral", type: "uint256" }, { name: "interestBps", type: "uint32" },
-    { name: "maturity", type: "uint64" }, { name: "requiredCompliantChecks", type: "uint16" }], outputs: [{ name: "loanId", type: "uint256" }] },
+    { name: "maturity", type: "uint64" }, { name: "drawdownDeadline", type: "uint64" },
+    { name: "settlementGrace", type: "uint32" }, { name: "covenantCommitments", type: "bytes32[]" },
+    { name: "tier1StepBps", type: "uint32[]" }, { name: "tier2SeizureBps", type: "uint32[]" },
+    { name: "expectedCommitment", type: "bytes32" }], outputs: [{ name: "loanId", type: "uint256" }] },
   { type: "function", name: "stakeCollateral", stateMutability: "nonpayable", inputs: [{ name: "loanId", type: "uint256" }], outputs: [] },
   { type: "function", name: "claimPrincipal", stateMutability: "nonpayable", inputs: [{ name: "loanId", type: "uint256" }], outputs: [] },
   { type: "function", name: "repay", stateMutability: "nonpayable", inputs: [{ name: "loanId", type: "uint256" }], outputs: [] },
@@ -69,7 +74,12 @@ export async function createBaseLoan(
   collateralUsdc: string,
   interestBps: number,
   maturity: number,
-  requiredCompliantChecks: number,
+  drawdownDeadline: number,
+  settlementGrace: number,
+  covenantCommitments: `0x${string}`[],
+  tier1StepBps: number[],
+  tier2SeizureBps: number[],
+  expectedCommitment: `0x${string}`,
   onStep?: (step: "switching_base" | "approving_usdc" | "escrowing_principal", hash?: `0x${string}`) => void,
 ) {
   const client = createPublicClient({ chain: baseSepolia, transport: http() });
@@ -81,7 +91,7 @@ export async function createBaseLoan(
   const approvalHash = await send(signer, BASE_USDC_ADDRESS, encodeFunctionData({ abi: erc20Abi, functionName: "approve", args: [BASE_ESCROW_ADDRESS, principal] }));
   onStep?.("approving_usdc", approvalHash);
   onStep?.("escrowing_principal");
-  const hash = await send(signer, BASE_ESCROW_ADDRESS, encodeFunctionData({ abi: escrowAbi, functionName: "createLoan", args: [borrower as `0x${string}`, principal, parseUnits(collateralUsdc, 6), interestBps, BigInt(maturity), requiredCompliantChecks] }));
+  const hash = await send(signer, BASE_ESCROW_ADDRESS, encodeFunctionData({ abi: escrowAbi, functionName: "createLoan", args: [borrower as `0x${string}`, principal, parseUnits(collateralUsdc, 6), interestBps, BigInt(maturity), BigInt(drawdownDeadline), settlementGrace, covenantCommitments, tier1StepBps, tier2SeizureBps, expectedCommitment] }));
   onStep?.("escrowing_principal", hash);
   return { loanId: Number(loanId), approvalHash, hash };
 }
@@ -97,7 +107,8 @@ export async function getBaseLoanState(loanId: number) {
   return {
     lender: loan[0], borrower: loan[1], principal: loan[2], collateralRequired: loan[3],
     principalEscrowed: loan[4], baseInterestBps: Number(loan[8]), maturity: Number(loan[10]),
-    requiredCompliantChecks: Number(loan[12]), status: Number(loan[14]),
+    drawdownDeadline: Number(loan[11]), settlementGrace: Number(loan[12]),
+    covenantCount: Number(loan[14]), status: Number(loan[16]), commitment: loan[18],
   };
 }
 

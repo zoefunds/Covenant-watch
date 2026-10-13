@@ -45,6 +45,17 @@ from app.services.rpc_budget import RpcBudgetExhaustedError
 
 log = get_logger(__name__)
 
+
+def _json_safe(value):
+    """Normalize web3 byte values before storing raw snapshots in JSONB."""
+    if isinstance(value, (bytes, bytearray)):
+        return "0x" + bytes(value).hex()
+    if isinstance(value, dict):
+        return {str(key): _json_safe(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(item) for item in value]
+    return value
+
 _STATUS: dict[str, Any] = {
     "state": "not_started",
     "last_run_at": None,
@@ -123,7 +134,7 @@ def _upsert_loan(db, chain_loan_id: int, loan_dict: dict) -> Loan:
     base_snapshot = None
     try:
         if get_settings().BASE_ESCROW_ADDRESS:
-            base_snapshot = get_base_loan(chain_loan_id)
+            base_snapshot = get_base_loan(int(loan_dict.get("base_loan_id", chain_loan_id)))
     except Exception as exc:  # noqa: BLE001 - retain last GenLayer cache on transient Base RPC failure
         log.warning("indexer.base_read_failed", loan_id=chain_loan_id, error=str(exc))
     if base_snapshot:
@@ -135,7 +146,7 @@ def _upsert_loan(db, chain_loan_id: int, loan_dict: dict) -> Loan:
         row.claimable_lender_wei = str(base_snapshot["lender_claimable"])
         row.claimable_borrower_wei = str(base_snapshot["borrower_claimable"])
         row.interest_bps = int(base_snapshot["current_interest_bps"])
-    row.raw_snapshot = {"genlayer": loan_dict, "base": base_snapshot}
+    row.raw_snapshot = {"genlayer": _json_safe(loan_dict), "base": _json_safe(base_snapshot)}
     db.add(row)
     db.flush()
     return row
@@ -346,17 +357,21 @@ def _relay_finalized_checks() -> None:
             .all()
         )
         for check, covenant in rows:
-            if is_decision_relayed(check.chain_loan_id, check.chain_check_id):
+            loan = db.query(Loan).filter(Loan.chain_loan_id == check.chain_loan_id).one()
+            genlayer_loan = (loan.raw_snapshot or {}).get("genlayer", {})
+            base_loan_id = int(genlayer_loan.get("base_loan_id", check.chain_loan_id))
+            if is_decision_relayed(base_loan_id, check.chain_check_id):
                 continue
-            schedule = covenant.consequence_schedule or {}
+            cov_snapshot = covenant.raw_snapshot or {}
             tx_hash = relay_finalized_decision(
-                check.chain_loan_id,
+                base_loan_id,
                 check.chain_check_id,
+                int(cov_snapshot["loan_covenant_index"]),
                 decision_codes[check.status],
-                int(schedule.get("tier1_interest_step_up_bps", 0)),
-                int(schedule.get("tier2_seizure_bps", 0)),
+                str(genlayer_loan["commitment"]),
+                str(cov_snapshot["commitment"]),
             )
-            log.info("indexer.decision_relayed", loan_id=check.chain_loan_id, check_id=check.chain_check_id, base_tx_hash=tx_hash)
+            log.info("indexer.decision_relayed", loan_id=base_loan_id, check_id=check.chain_check_id, base_tx_hash=tx_hash)
 
 
 async def indexer_loop(stop_event: asyncio.Event) -> None:

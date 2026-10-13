@@ -47,11 +47,11 @@ GenLayer reads use `call_contract_view_budgeted`. Redis coordinates a fixed-wind
 Copy `.env.example` to `.env`. Current public values are:
 
 ```text
-CONTRACT_ADDRESS=0xb86d1525014c80F98E7f0C3Be2af60AF3ab761F8
+CONTRACT_ADDRESS=0x1EC71Df45C68F9F52A155DbBC8def172B00819C4
 GENLAYER_NETWORK=studionet
 BASE_SEPOLIA_RPC_URL=https://sepolia.base.org
 BASE_USDC_ADDRESS=0x036CbD53842c5426634e7929541eC2318f3dCF7e
-BASE_ESCROW_ADDRESS=0x6b806484E938E8Bf5eD65D1841543931240834ef
+BASE_ESCROW_ADDRESS=0x37913648E096a6E8e97A2f5F31473e31c90c2Fb2
 BASE_RELAYER_PRIVATE_KEY=<secret; backend only>
 ```
 
@@ -74,4 +74,4 @@ curl http://localhost:8000/healthz
 
 ## Current production state
 
-On 13 October 2026, Fly was configured with the fresh Base and GenLayer addresses. Health checks succeeded and `/loans` returned `[]`, consistent with both contracts reporting zero loans. No live E2E loan has been run against this address pair.
+On 13 October 2026, Fly was configured with the remediation pair. Health checks succeeded and `/loans` returned three live paired loans after acceptance.

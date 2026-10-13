@@ -4,8 +4,8 @@ Last updated: 13 October 2026.
 
 ## Current trust boundary
 
-- Base Sepolia contract `0x6b806484E938E8Bf5eD65D1841543931240834ef` is the sole authority for USDC custody, draw eligibility, repayment, breach consequences, maturity, and settlement.
-- GenLayer contract `0xb86d1525014c80F98E7f0C3Be2af60AF3ab761F8` is the authority for covenant definitions, evidence evaluation, challenges, and finalized adjudication. It does not custody value.
+- Base Sepolia contract `0x37913648E096a6E8e97A2f5F31473e31c90c2Fb2` is the sole authority for USDC custody, draw eligibility, repayment, breach consequences, maturity, and settlement.
+- GenLayer contract `0x1EC71Df45C68F9F52A155DbBC8def172B00819C4` is the authority for covenant definitions, evidence evaluation, challenges, and finalized adjudication. It does not custody value.
 - Browser wallets directly authorize loan creation, collateral staking, principal draw, repayment, and claims. The backend cannot initiate those user actions.
 - The backend holds a dedicated Base relayer key. Its authority is restricted by the Base contract to `applyDecision`; it cannot transfer arbitrary user USDC. This key remains a sensitive production secret and should be rotated if exposed.
 - API cache data is eventually consistent and non-authoritative. Contract reads and contract-enforced preconditions remain the final safety boundary.
@@ -46,15 +46,15 @@ Last updated: 13 October 2026.
 
 ## Current verification status
 
-- Fresh Base deployment transaction: `0x7240cc53bb05537aee0ced6675a4760d14204bbdd205676e2b1b8c34c44b5d1f`.
-- Fresh GenLayer deployment transaction: `0x15aeb14989c76229ad0e409cb5affdbafea1aca643eef0113eafd5aecf3a4d9b`.
+- Remediation Base deployment transaction: `0x3ffd97e520394dc4577420b3df987711bb857f8a305e7868fc6674075dfd8dfb`.
+- Remediation GenLayer deployment transaction: `0x375f98f42157f8e3cf941074036f2d26cc140c3fae02b3a1233d630fbca60ffa`.
 - GenLayer deployment: finalized, successful, five agreeing validators.
-- Initial loan counters: zero on both chains.
-- Production API list after redeployment: empty.
+- Acceptance counters: three paired loans on both chains.
+- Production API list after acceptance: three live indexed loans.
 - Local Foundry escrow suite: 3 passed, 0 failed.
 - Backend pytest suite: 17 passed, 0 failed.
 - Frontend ESLint, TypeScript checking, and Next.js production build: passed.
-- Live E2E movement of USDC and a full adjudication relay on these fresh addresses has not been performed. It remains an acceptance requirement, not a completed audit claim.
+- Live acceptance completed on the remediation pair using separate lender and borrower wallets. It covered Base approvals, principal escrow, collateral staking, finalized GenLayer checks, forged relay rejection and recovery, three-covenant breach progression, challenge evidence, default withdrawal, repayment/settlement, and undrawn maturity settlement. Evidence was written to `/private/tmp/covenant-watch-security-acceptance.json`.
 
 ## Residual risks
 

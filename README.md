@@ -12,12 +12,12 @@ Last verified: 13 October 2026.
 |---|---|
 | Frontend | https://covenant-watch.vercel.app |
 | Backend | https://covenant-watch-api.fly.dev |
-| GenLayer adjudicator | `0xb86d1525014c80F98E7f0C3Be2af60AF3ab761F8` |
-| Base Sepolia escrow | `0x6b806484E938E8Bf5eD65D1841543931240834ef` |
+| GenLayer adjudicator | `0x1EC71Df45C68F9F52A155DbBC8def172B00819C4` |
+| Base Sepolia escrow | `0x37913648E096a6E8e97A2f5F31473e31c90c2Fb2` |
 | Circle Base Sepolia USDC | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` |
-| Base decision relayer | `0x35F5ea45122eE7Dd5Ec6aA6aab961E9147e3e9e8` |
+| Base decision relayer | `0x7401c129EDfc26E68FE19309fE461eb3Db1058Eb` |
 
-Both contracts were freshly deployed for this milestone and currently report zero loans. No live E2E loan was created on these addresses; acceptance testing is intentionally left to the user.
+Both contracts were freshly deployed for this remediation and the live acceptance run created three paired loans with real Base Sepolia USDC movement and finalized GenLayer transactions.
 
 ## Transaction flow
 

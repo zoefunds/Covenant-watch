@@ -8,11 +8,11 @@ Store credentials as Fly secrets; never commit database, Redis, session, observa
 
 ```bash
 fly secrets set -a covenant-watch-api \
-  CONTRACT_ADDRESS=0xb86d1525014c80F98E7f0C3Be2af60AF3ab761F8 \
+  CONTRACT_ADDRESS=0x1EC71Df45C68F9F52A155DbBC8def172B00819C4 \
   GENLAYER_NETWORK=studionet \
   BASE_SEPOLIA_RPC_URL=https://sepolia.base.org \
   BASE_USDC_ADDRESS=0x036CbD53842c5426634e7929541eC2318f3dCF7e \
-  BASE_ESCROW_ADDRESS=0x6b806484E938E8Bf5eD65D1841543931240834ef \
+  BASE_ESCROW_ADDRESS=0x37913648E096a6E8e97A2f5F31473e31c90c2Fb2 \
   BASE_RELAYER_PRIVATE_KEY='<secret>' \
   DATABASE_URL='postgresql+psycopg://...' \
   REDIS_URL='rediss://...' \
@@ -40,7 +40,7 @@ fly status -a covenant-watch-api
 fly logs -a covenant-watch-api
 ```
 
-Healthy output includes `status: ok`, `database: ok`, `contract_configured: true`, an indexer state of `idle` or `syncing`, a recent `last_success_at`, and `last_error: null`. On the fresh 13 October 2026 deployment, `/loans` returned an empty list because both contracts started at loan count zero.
+Healthy output includes `status: ok`, `database: ok`, `contract_configured: true`, an indexer state of `idle` or `syncing`, a recent `last_success_at`, and `last_error: null`. After the 13 October remediation acceptance run, `/loans` returned three live paired loans.
 
 ## Privilege boundary
 

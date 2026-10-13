@@ -18,6 +18,7 @@ export interface CovenantInput {
   source_type: SourceType;
   source_ref: string;
   source_refs?: string[];
+  challenge_source_refs?: string[];
   condition_field: string;
   operator: ">=" | "<=" | ">" | "<" | "==";
   threshold: number;
@@ -42,7 +43,7 @@ export const VAGUE_CONDITION_FRAGMENTS = [
   "commercially reasonable",
 ];
 
-export const CHALLENGE_WINDOW_BOUNDS = { min: 6 * 60 * 60, max: 7 * 24 * 60 * 60, default: 48 * 60 * 60 };
+export const CHALLENGE_WINDOW_BOUNDS = { min: 5 * 60, max: 7 * 24 * 60 * 60, default: 48 * 60 * 60 };
 export const MAX_COVENANTS_PER_LOAN = 8;
 export const MATURITY_GRACE_SECONDS = 14 * 24 * 60 * 60;
 
@@ -52,6 +53,8 @@ export const MATURITY_GRACE_SECONDS = 14 * 24 * 60 * 60;
 // COVENANT_STATUS_NAMES — never a raw int decoded client-side).
 export interface LoanDict {
   id: number;
+  base_loan_id: number;
+  commitment: string;
   lender: string;
   borrower: string;
   principal_wei: number;
@@ -59,6 +62,8 @@ export interface LoanDict {
   base_interest_bps: number;
   current_interest_bps: number;
   maturity_ts: number;
+  drawdown_deadline_ts: number;
+  settlement_grace_seconds: number;
   challenge_window_seconds: number;
   covenant_count: number;
   principal_deposited: number;
@@ -75,9 +80,12 @@ export interface LoanDict {
 export interface CovenantDict {
   id: number;
   loan_id: number;
+  loan_covenant_index: number;
+  commitment: string;
   source_type: SourceType;
   source_ref: string;
   source_refs: string[];
+  challenge_source_refs: string[];
   condition_field: string;
   operator: string;
   // Returned by the contract as a decimal STRING (e.g. "1.050000"), not a
@@ -188,18 +196,22 @@ export const getCooldownRemaining = (loanId: number, covenantId: number, address
 // ---- Writes (each takes the connected Signer first) ----
 export const createLoan = (
   signer: Signer,
+  baseLoanId: number,
+  loanCommitment: string,
   borrower: string,
   principalUsdc: bigint,
   collateralWei: bigint,
   baseInterestBps: number,
   maturityTs: number,
+  drawdownDeadlineTs: number,
+  settlementGraceSeconds: number,
   covenants: CovenantInput[],
   challengeWindowSeconds: number,
 ) =>
   write(
     signer,
     "create_loan",
-    [borrower, principalUsdc, collateralWei, baseInterestBps, maturityTs, JSON.stringify(covenants), challengeWindowSeconds]
+    [baseLoanId, loanCommitment, borrower, principalUsdc, collateralWei, baseInterestBps, maturityTs, drawdownDeadlineTs, settlementGraceSeconds, JSON.stringify(covenants), challengeWindowSeconds]
   );
 
 export const activateBaseLoan = (signer: Signer, loanId: number, baseTxHash: string) =>

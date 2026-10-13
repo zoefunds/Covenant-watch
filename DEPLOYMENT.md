@@ -6,12 +6,12 @@ Last verified: 13 October 2026.
 
 | Component | Value |
 |---|---|
-| GenLayer StudioNet adjudicator | `0xb86d1525014c80F98E7f0C3Be2af60AF3ab761F8` |
-| GenLayer deployment transaction | `0x15aeb14989c76229ad0e409cb5affdbafea1aca643eef0113eafd5aecf3a4d9b` |
-| Base Sepolia escrow | `0x6b806484E938E8Bf5eD65D1841543931240834ef` |
-| Base deployment transaction | `0x7240cc53bb05537aee0ced6675a4760d14204bbdd205676e2b1b8c34c44b5d1f` |
+| GenLayer StudioNet adjudicator | `0x1EC71Df45C68F9F52A155DbBC8def172B00819C4` |
+| GenLayer deployment transaction | `0x375f98f42157f8e3cf941074036f2d26cc140c3fae02b3a1233d630fbca60ffa` |
+| Base Sepolia escrow | `0x37913648E096a6E8e97A2f5F31473e31c90c2Fb2` |
+| Base deployment transaction | `0x3ffd97e520394dc4577420b3df987711bb857f8a305e7868fc6674075dfd8dfb` |
 | Base owner/deployer | `0x7401c129EDfc26E68FE19309fE461eb3Db1058Eb` |
-| Dedicated Base relayer | `0x35F5ea45122eE7Dd5Ec6aA6aab961E9147e3e9e8` |
+| Dedicated Base relayer | `0x7401c129EDfc26E68FE19309fE461eb3Db1058Eb` |
 | Relayer funding transaction | `0xd2088bc32f7cf7143b0e5f44060fc2e0eacdb55fa58264e50d885b031bfdec34` |
 | Circle Base Sepolia USDC | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` |
 | Frontend | https://covenant-watch.vercel.app |
@@ -19,7 +19,7 @@ Last verified: 13 October 2026.
 | Backend | https://covenant-watch-api.fly.dev |
 | Fly app / region | `covenant-watch-api` / `iad` |
 
-The GenLayer deployment is finalized and successful with five agreeing validators. Read-only checks returned `get_loan_count() == 0` on GenLayer and `loanCount() == 0` on Base. The production backend returned an empty loan list. No live E2E transaction has been run against these fresh contracts.
+The GenLayer deployment is finalized and successful with five agreeing validators. The live acceptance run created three paired loans, and the production backend indexes those three loans.
 
 ## 1. Verify source locally
 
@@ -59,21 +59,21 @@ Do not wire the address until the deployment receipt is `FINALIZED` and executio
 Backend production secrets/configuration:
 
 ```text
-CONTRACT_ADDRESS=0xb86d1525014c80F98E7f0C3Be2af60AF3ab761F8
+CONTRACT_ADDRESS=0x1EC71Df45C68F9F52A155DbBC8def172B00819C4
 GENLAYER_NETWORK=studionet
 BASE_SEPOLIA_RPC_URL=https://sepolia.base.org
 BASE_USDC_ADDRESS=0x036CbD53842c5426634e7929541eC2318f3dCF7e
-BASE_ESCROW_ADDRESS=0x6b806484E938E8Bf5eD65D1841543931240834ef
+BASE_ESCROW_ADDRESS=0x37913648E096a6E8e97A2f5F31473e31c90c2Fb2
 BASE_RELAYER_PRIVATE_KEY=<Fly secret; never commit>
 ```
 
 Frontend build variables:
 
 ```text
-NEXT_PUBLIC_CONTRACT_ADDRESS=0xb86d1525014c80F98E7f0C3Be2af60AF3ab761F8
+NEXT_PUBLIC_CONTRACT_ADDRESS=0x1EC71Df45C68F9F52A155DbBC8def172B00819C4
 NEXT_PUBLIC_GENLAYER_NETWORK=studionet
 NEXT_PUBLIC_BASE_USDC_ADDRESS=0x036CbD53842c5426634e7929541eC2318f3dCF7e
-NEXT_PUBLIC_BASE_ESCROW_ADDRESS=0x6b806484E938E8Bf5eD65D1841543931240834ef
+NEXT_PUBLIC_BASE_ESCROW_ADDRESS=0x37913648E096a6E8e97A2f5F31473e31c90c2Fb2
 NEXT_PUBLIC_BACKEND_URL=https://covenant-watch-api.fly.dev
 NEXT_PUBLIC_GENLAYER_EXPLORER_URL=https://explorer-studio.genlayer.com/
 ```
@@ -84,7 +84,7 @@ Deploy with `fly deploy -a covenant-watch-api` from `backend/` and `vercel --pro
 
 The browser uses the exact EIP-6963 provider chosen by the user. Origination must request Base Sepolia for USDC approval and principal escrow, then GenLayer StudioNet for adjudication registration. Borrower activation requests Base for approval/staking and then GenLayer to record the confirmed Base hash.
 
-For live acceptance, verify every receipt in its explorer and confirm actual USDC balance changes on Base. GenLayer `ACCEPTED` is not finality; wait for `FINALIZED` and successful execution. The optional runner is `tests/e2e/cross_chain_live.py`, but it has not been executed on the current addresses.
+For live acceptance, verify every receipt in its explorer and confirm actual USDC balance changes on Base. GenLayer `ACCEPTED` is not finality; wait for `FINALIZED` and successful execution. The remediation runner is `tests/e2e/security_acceptance.py`; the completed evidence artifact contains Base receipts, GenVM success, validator votes, state readbacks, and USDC balance deltas.
 
 ## 6. Relay operation
 

@@ -5,13 +5,13 @@ proves GenLayer has no payment surface and retains its evidence safeguards.
 """
 import json
 import pytest
-from conftest import CONTRACT_PATH, DAY, covenants_json, offchain_covenant, onchain_covenant, mock_offchain_verdict, to_hex
+from conftest import CONTRACT_PATH, DAY, create_args, offchain_covenant, onchain_covenant, mock_offchain_verdict
 
 BASE_TX = "0x" + "ab" * 32
 
 def create(contract, vm, lender, borrower, covenants, window=0):
     vm.sender = lender
-    return contract.create_loan(to_hex(borrower), 1_000_000, 2_000_000, 500, 4_102_444_800, covenants_json(*covenants), window)
+    return contract.create_loan(*create_args(lender, borrower, covenants, window=window))
 
 def activate(contract, vm, borrower, loan_id):
     vm.sender = borrower
@@ -73,6 +73,25 @@ def test_inconclusive_never_escalates_breach(direct_vm, direct_deploy, direct_al
     check_id = contract.trigger_covenant_check(loan_id, covenant_id)
     assert contract.get_check(check_id)["status"] == "INCONCLUSIVE"
     assert contract.get_loan(loan_id)["breach_tier"] == 0
+
+def test_conflicting_challenge_cannot_replace_original_breach(direct_vm, direct_deploy, direct_alice, direct_bob):
+    contract = direct_deploy(CONTRACT_PATH)
+    cov = offchain_covenant()
+    loan_id = create(contract, direct_vm, direct_alice, direct_bob, [cov]); activate(contract, direct_vm, direct_bob, loan_id)
+    covenant_id = contract.get_loan_covenants(loan_id)[0]["id"]
+    mock_offchain_verdict(direct_vm, status="BREACH", value=0.8)
+    direct_vm.sender = direct_alice
+    check_id = contract.trigger_covenant_check(loan_id, covenant_id)
+    with direct_vm.expect_revert():
+        contract.submit_challenge_evidence(loan_id, check_id, "https://attacker.invalid/report", "unapproved")
+
+    direct_vm.clear_mocks()
+    direct_vm.mock_web(r".*", {"status": 200, "body": "publisher evidence"})
+    direct_vm.mock_llm(r".*challenge-.*", json.dumps({"status": "COMPLIANT", "observed_value": 1.2, "observed_note": "supporting claim"}))
+    direct_vm.mock_llm(r".*", json.dumps({"status": "BREACH", "observed_value": 0.8, "observed_note": "original finding"}))
+    for url in cov["challenge_source_refs"]:
+        contract.submit_challenge_evidence(loan_id, check_id, url, "preauthorized supporting evidence")
+    assert contract.get_check(check_id)["status"] == "BREACH"
 
 def test_genlayer_exposes_no_payment_methods(direct_vm, direct_deploy):
     contract = direct_deploy(CONTRACT_PATH)

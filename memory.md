@@ -9,19 +9,19 @@ This file records current state only. Retired addresses, old transaction demonst
 | Component | Current value |
 |---|---|
 | GenLayer network | StudioNet |
-| GenLayer adjudicator | `0xb86d1525014c80F98E7f0C3Be2af60AF3ab761F8` |
-| GenLayer deployment transaction | `0x15aeb14989c76229ad0e409cb5affdbafea1aca643eef0113eafd5aecf3a4d9b` |
+| GenLayer adjudicator | `0x1EC71Df45C68F9F52A155DbBC8def172B00819C4` |
+| GenLayer deployment transaction | `0x375f98f42157f8e3cf941074036f2d26cc140c3fae02b3a1233d630fbca60ffa` |
 | Base network | Base Sepolia, chain ID `84532` |
-| Base escrow | `0x6b806484E938E8Bf5eD65D1841543931240834ef` |
-| Base deployment transaction | `0x7240cc53bb05537aee0ced6675a4760d14204bbdd205676e2b1b8c34c44b5d1f` |
+| Base escrow | `0x37913648E096a6E8e97A2f5F31473e31c90c2Fb2` |
+| Base deployment transaction | `0x3ffd97e520394dc4577420b3df987711bb857f8a305e7868fc6674075dfd8dfb` |
 | Circle test USDC | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` |
-| Base relayer | `0x35F5ea45122eE7Dd5Ec6aA6aab961E9147e3e9e8` |
+| Base relayer | `0x7401c129EDfc26E68FE19309fE461eb3Db1058Eb` |
 | Frontend | https://covenant-watch.vercel.app |
 | Vercel project / deployment | `covenant-watch` / `dpl_BG3fddp9AQWHYgTYFpESUZ8fJJ8J` |
 | Backend | https://covenant-watch-api.fly.dev |
 | Fly app / region | `covenant-watch-api` / `iad` |
 
-The GenLayer deployment is finalized and successful with five agreeing validators. Both chain counters are zero, and the backend `/loans` response is empty. No live E2E loan has been submitted to the fresh pair.
+The GenLayer deployment is finalized and successful with five agreeing validators. Both chain counters are three after the live acceptance run, and the backend `/loans` response contains three paired loans.
 
 ## Live architecture
 
@@ -54,4 +54,4 @@ Loan IDs must match across both fresh deployments. The frontend counter guard bl
 
 ## Acceptance status
 
-Deployment receipts and zero-state reads have been verified. The local Foundry suite passed 3/3, the backend suite passed 17/17, and frontend lint, type checking, and production build passed after the current wallet and contract integration. These are local checks, not live-chain proof. Live USDC escrow, collateral movement, adjudication, and relay on the fresh addresses remain for user-run acceptance testing.
+Deployment receipts, live transaction receipts, finalized GenVM results, validator votes, contract-state readbacks, and Base USDC balance deltas have been verified in the acceptance artifact. The local Foundry suite passed 9/9, the backend/direct suite passed 28/28, and frontend lint, type checking, and production build passed.

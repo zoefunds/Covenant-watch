@@ -13,17 +13,19 @@ from app.core.config import get_settings
 ESCROW_ABI = [
     {"type":"function","name":"applyDecision","stateMutability":"nonpayable","inputs":[
         {"name":"loanId","type":"uint256"},{"name":"checkId","type":"uint256"},
-        {"name":"decision","type":"uint8"},{"name":"tier1StepBps","type":"uint32"},
-        {"name":"tier2SeizureBps","type":"uint32"}],"outputs":[]},
+        {"name":"covenantIndex","type":"uint256"},{"name":"decision","type":"uint8"},
+        {"name":"loanCommitment","type":"bytes32"},{"name":"covenantCommitment","type":"bytes32"}],"outputs":[]},
     {"type":"function","name":"loans","stateMutability":"view","inputs":[{"name":"","type":"uint256"}],
      "outputs":[{"name":"lender","type":"address"},{"name":"borrower","type":"address"},
         {"name":"principal","type":"uint256"},{"name":"collateralRequired","type":"uint256"},
         {"name":"principalEscrowed","type":"uint256"},{"name":"collateralEscrowed","type":"uint256"},
         {"name":"lenderClaimable","type":"uint256"},{"name":"borrowerClaimable","type":"uint256"},
         {"name":"baseInterestBps","type":"uint32"},{"name":"currentInterestBps","type":"uint32"},
-        {"name":"maturity","type":"uint64"},{"name":"breachTier","type":"uint8"},
-        {"name":"requiredCompliantChecks","type":"uint16"},{"name":"compliantChecks","type":"uint16"},
-        {"name":"status","type":"uint8"},{"name":"principalClaimed","type":"bool"}]},
+        {"name":"maturity","type":"uint64"},{"name":"drawdownDeadline","type":"uint64"},
+        {"name":"settlementGrace","type":"uint32"},{"name":"breachTier","type":"uint8"},
+        {"name":"covenantCount","type":"uint16"},{"name":"compliantCovenants","type":"uint16"},
+        {"name":"status","type":"uint8"},{"name":"principalClaimed","type":"bool"},
+        {"name":"commitment","type":"bytes32"}]},
     {"type":"function","name":"decisionRelayed","stateMutability":"view","inputs":[
         {"name":"","type":"uint256"},{"name":"","type":"uint256"}],"outputs":[{"type":"bool"}]},
 ]
@@ -37,10 +39,10 @@ def get_base_loan(loan_id: int) -> dict:
         raise RuntimeError("BASE_ESCROW_ADDRESS is not configured")
     w3 = _web3()
     values = w3.eth.contract(address=Web3.to_checksum_address(settings.BASE_ESCROW_ADDRESS), abi=ESCROW_ABI).functions.loans(loan_id).call()
-    names = ["lender","borrower","principal","collateral_required","principal_escrowed","collateral_escrowed","lender_claimable","borrower_claimable","base_interest_bps","current_interest_bps","maturity","breach_tier","required_compliant_checks","compliant_checks","status","principal_claimed"]
+    names = ["lender","borrower","principal","collateral_required","principal_escrowed","collateral_escrowed","lender_claimable","borrower_claimable","base_interest_bps","current_interest_bps","maturity","drawdown_deadline","settlement_grace","breach_tier","covenant_count","compliant_covenants","status","principal_claimed","commitment"]
     return dict(zip(names, values))
 
-def relay_finalized_decision(loan_id: int, check_id: int, decision: int, tier1_step_bps: int, tier2_seizure_bps: int) -> str:
+def relay_finalized_decision(loan_id: int, check_id: int, covenant_index: int, decision: int, loan_commitment: str, covenant_commitment: str) -> str:
     settings = get_settings()
     if not settings.BASE_ESCROW_ADDRESS or not settings.BASE_RELAYER_PRIVATE_KEY:
         raise RuntimeError("Base Sepolia relay is not configured")
@@ -49,7 +51,7 @@ def relay_finalized_decision(loan_id: int, check_id: int, decision: int, tier1_s
     contract = w3.eth.contract(address=Web3.to_checksum_address(settings.BASE_ESCROW_ADDRESS), abi=ESCROW_ABI)
     gas_price = w3.eth.gas_price
     priority_fee = min(w3.to_wei(1, "gwei"), gas_price)
-    tx = contract.functions.applyDecision(loan_id, check_id, decision, tier1_step_bps, tier2_seizure_bps).build_transaction({
+    tx = contract.functions.applyDecision(loan_id, check_id, covenant_index, decision, loan_commitment, covenant_commitment).build_transaction({
         "from": account.address, "nonce": w3.eth.get_transaction_count(account.address, "pending"),
         "chainId": 84532, "gas": 350_000, "maxFeePerGas": gas_price * 2 + priority_fee,
         "maxPriorityFeePerGas": priority_fee,

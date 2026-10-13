@@ -13,6 +13,7 @@ import { createLoan, getLoanCount, CovenantInput, VAGUE_CONDITION_FRAGMENTS, CHA
 import { BASE_EXPLORER_URL, CONTRACT_ADDRESS } from "@/lib/config";
 import { usdcToUnits, formatDuration, formatBps } from "@/lib/format";
 import { createBaseLoan, getBaseLoanCount, getBaseLoanState } from "@/lib/base";
+import { covenantCommitment, loanCommitment } from "@/lib/commitments";
 
 type DraftCovenant = CovenantInput & { _previewLoading?: boolean; _previewBody?: string; _previewError?: string };
 
@@ -20,6 +21,7 @@ const EMPTY_COVENANT: DraftCovenant = {
   source_type: "OFFCHAIN",
   source_ref: "",
   source_refs: ["", "", ""],
+  challenge_source_refs: ["", "", ""],
   condition_field: "",
   operator: ">=",
   threshold: 0,
@@ -41,6 +43,20 @@ function validateCovenant(c: DraftCovenant, idx: number): string | null {
       }
     } catch {
       return `Covenant ${idx + 1}: every OFFCHAIN source must be a valid HTTPS URL`;
+    }
+    const challengeSources = c.challenge_source_refs ?? [];
+    if (challengeSources.length < 3 || challengeSources.some((url) => !/^https:\/\//.test(url))) {
+      return `Covenant ${idx + 1}: preauthorize at least three public HTTPS challenge publisher URLs`;
+    }
+    const publisher = (url: string) => new URL(url).hostname.toLowerCase().replace(/^www\./, "").split(".").slice(-2).join(".");
+    try {
+      const primaryPublishers = sources.map(publisher);
+      const challengePublishers = challengeSources.map(publisher);
+      if (new Set(challengePublishers).size !== challengePublishers.length || challengePublishers.some((item) => primaryPublishers.includes(item))) {
+        return `Covenant ${idx + 1}: primary and challenge URLs must use independent publisher identities`;
+      }
+    } catch {
+      return `Covenant ${idx + 1}: every challenge source must be a valid HTTPS URL`;
     }
   }
   if (c.source_type === "ONCHAIN" && !c.source_ref.trim()) return `Covenant ${idx + 1}: source is required`;
@@ -74,6 +90,7 @@ export default function NewLoanPage() {
   const [collateralUsdc, setCollateralUsdc] = useState("");
   const [interestBps, setInterestBps] = useState(500);
   const [maturityDate, setMaturityDate] = useState("");
+  const [drawdownDate, setDrawdownDate] = useState("");
   const [challengeWindow, setChallengeWindow] = useState(CHALLENGE_WINDOW_BOUNDS.default);
   const [covenants, setCovenants] = useState<DraftCovenant[]>([{ ...EMPTY_COVENANT }]);
   const [formError, setFormError] = useState<string | null>(null);
@@ -98,6 +115,8 @@ export default function NewLoanPage() {
     setInterestBps(500);
     const inSixWeeks = new Date(Date.now() + 42 * 24 * 60 * 60 * 1000);
     setMaturityDate(inSixWeeks.toISOString().slice(0, 16));
+    const inTwoWeeks = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
+    setDrawdownDate(inTwoWeeks.toISOString().slice(0, 16));
     setChallengeWindow(CHALLENGE_WINDOW_BOUNDS.default);
     setCovenants([
       {
@@ -107,6 +126,11 @@ export default function NewLoanPage() {
           "https://en.wikipedia.org/wiki/Bitcoin",
           "https://river.com/learn/terms/1/21-million/",
           "https://www.fidelitydigitalassets.com/research-and-insights/understanding-bitcoin-and-ethereum-supply",
+        ],
+        challenge_source_refs: [
+          "https://bitcoin.org/en/faq#how-are-bitcoins-created",
+          "https://www.investopedia.com/tech/what-happens-bitcoin-after-21-million-mined/",
+          "https://www.coinbase.com/learn/crypto-basics/what-is-bitcoin",
         ],
         condition_field: "max_bitcoin_supply",
         operator: "==",
@@ -156,8 +180,13 @@ export default function NewLoanPage() {
       return;
     }
     const maturityTs = Math.floor(new Date(maturityDate).getTime() / 1000);
+    const drawdownDeadlineTs = Math.floor(new Date(drawdownDate).getTime() / 1000);
     if (maturityTs <= Math.floor(contractNow)) {
       setFormError("Maturity must be in the future.");
+      return;
+    }
+    if (!drawdownDate || drawdownDeadlineTs <= Math.floor(contractNow) || drawdownDeadlineTs > maturityTs) {
+      setFormError("Drawdown deadline must be in the future and no later than maturity.");
       return;
     }
     if (challengeWindow < CHALLENGE_WINDOW_BOUNDS.min || challengeWindow > CHALLENGE_WINDOW_BOUNDS.max) {
@@ -186,6 +215,7 @@ export default function NewLoanPage() {
       source_type: c.source_type,
       source_ref: c.source_ref.trim(),
       source_refs: c.source_type === "OFFCHAIN" ? (c.source_refs ?? []).map((url) => url.trim()) : undefined,
+      challenge_source_refs: c.source_type === "OFFCHAIN" ? (c.challenge_source_refs ?? []).map((url) => url.trim()) : undefined,
       condition_field: c.condition_field.trim(),
       operator: c.operator,
       threshold: c.threshold,
@@ -197,12 +227,15 @@ export default function NewLoanPage() {
     try {
       const genLayerCount = Number(await getLoanCount());
       const baseCount = await getBaseLoanCount();
+      const covenantCommitments = cleanCovenants.map((covenant, index) => covenantCommitment(index, covenant));
+      const settlementGrace = 14 * 24 * 60 * 60;
       let effectiveBorrower = normalizedBorrower;
       let effectivePrincipal = principalUsdc;
       let effectiveCollateral = collateralUsdc;
       let effectiveInterestBps = interestBps;
       let effectiveMaturity = maturityTs;
-      let baseLoan: { loanId: number };
+      let effectiveDrawdown = drawdownDeadlineTs;
+      let baseLoan: { loanId: number; commitment: `0x${string}` };
 
       if (baseCount === genLayerCount + 1) {
         // Recover an interrupted Base -> GenLayer origination. Never escrow a
@@ -212,20 +245,22 @@ export default function NewLoanPage() {
         if (orphan.lender.toLowerCase() !== signer.address.toLowerCase() || orphan.status !== 0 || orphan.principalEscrowed !== orphan.principal) {
           throw new Error(`Base and GenLayer loan counters differ at loan #${genLayerCount}. Its pending Base escrow belongs to another flow; no new funds were moved.`);
         }
-        if (orphan.requiredCompliantChecks !== cleanCovenants.length) {
-          throw new Error(`Base loan #${genLayerCount} is waiting for ${orphan.requiredCompliantChecks} covenant(s). Submit exactly that many to recover it; no new funds were moved.`);
-        }
+        const recoveryCommitment = loanCommitment({ baseLoanId: genLayerCount, lender: signer.address, borrower: orphan.borrower, principal: orphan.principal, collateral: orphan.collateralRequired, interestBps: orphan.baseInterestBps, maturity: orphan.maturity, drawdownDeadline: orphan.drawdownDeadline, settlementGrace: orphan.settlementGrace, covenantCommitments });
+        if (recoveryCommitment.toLowerCase() !== String(orphan.commitment).toLowerCase()) throw new Error(`Base loan #${genLayerCount} does not match these participants, terms, and covenant commitments; no new funds were moved.`);
         effectiveBorrower = orphan.borrower.toLowerCase();
         effectivePrincipal = (Number(orphan.principal) / 1e6).toString();
         effectiveCollateral = (Number(orphan.collateralRequired) / 1e6).toString();
         effectiveInterestBps = orphan.baseInterestBps;
         effectiveMaturity = orphan.maturity;
-        baseLoan = { loanId: genLayerCount };
+        effectiveDrawdown = orphan.drawdownDeadline;
+        baseLoan = { loanId: genLayerCount, commitment: recoveryCommitment };
         setFlowStep(`Recovered existing Base loan #${genLayerCount} (${effectivePrincipal} USDC already escrowed). No duplicate Base transaction will be sent.`);
       } else if (baseCount === genLayerCount) {
         // New origination: USDC approval, then createLoan/transferFrom.
-        baseLoan = await createBaseLoan(
-          signer, normalizedBorrower, principalUsdc, collateralUsdc, interestBps, maturityTs, cleanCovenants.length,
+        const commitment = loanCommitment({ baseLoanId: baseCount, lender: signer.address, borrower: normalizedBorrower, principal: usdcToUnits(principalUsdc), collateral: usdcToUnits(collateralUsdc), interestBps, maturity: maturityTs, drawdownDeadline: drawdownDeadlineTs, settlementGrace, covenantCommitments });
+        const created = await createBaseLoan(
+          signer, normalizedBorrower, principalUsdc, collateralUsdc, interestBps, maturityTs, drawdownDeadlineTs, settlementGrace, covenantCommitments,
+          cleanCovenants.map((c) => c.tier1_interest_step_up_bps), cleanCovenants.map((c) => c.tier2_seizure_bps), commitment,
           (step, hash) => {
             const labels = {
               switching_base: "Switching wallet to Base Sepolia…",
@@ -236,13 +271,14 @@ export default function NewLoanPage() {
             if (hash) setBaseHashes((current) => ({ ...current, [step === "approving_usdc" ? "approval" : "escrow"]: hash }));
           }
         );
+        baseLoan = { ...created, commitment };
       } else {
         throw new Error(`Base reports ${baseCount} loans while GenLayer reports ${genLayerCount}. Origination is paused to prevent mismatched loan IDs; no funds were moved.`);
       }
       if (baseLoan.loanId < 0) throw new Error("Base Sepolia did not return a valid loan id");
       setFlowStep("Switching wallet to GenLayer and requesting the adjudication-record transaction…");
       const result = await runTrackedWrite(
-        () => createLoan(signer, effectiveBorrower, usdcToUnits(effectivePrincipal), usdcToUnits(effectiveCollateral), effectiveInterestBps, effectiveMaturity, cleanCovenants, challengeWindow),
+        () => createLoan(signer, baseLoan.loanId, baseLoan.commitment, effectiveBorrower, usdcToUnits(effectivePrincipal), usdcToUnits(effectiveCollateral), effectiveInterestBps, effectiveMaturity, effectiveDrawdown, settlementGrace, cleanCovenants, challengeWindow),
         setSnap
       );
 
@@ -299,6 +335,9 @@ export default function NewLoanPage() {
                 </p>
               )}
             </Field>
+            <Field label="Drawdown deadline" hint="Principal cannot be drawn after this time">
+              <Input type="datetime-local" value={drawdownDate} onChange={(e) => setDrawdownDate(e.target.value)} />
+            </Field>
             <Field label="Principal (USDC)" hint="Escrowed on Base Sepolia">
               <Input placeholder="100" value={principalUsdc} onChange={(e) => setPrincipalUsdc(e.target.value)} />
             </Field>
@@ -353,7 +392,7 @@ export default function NewLoanPage() {
                 </Select>
               </Field>
               {c.source_type === "OFFCHAIN" ? (
-                <div className="sm:col-span-2">
+                <div className="space-y-4 sm:col-span-2">
                   <Field
                     label="Independent publisher URLs"
                     hint="At least three distinct HTTPS hostnames. The contract requires a numeric majority before any verdict."
@@ -370,6 +409,25 @@ export default function NewLoanPage() {
                             updateCovenant(i, { source_refs: next });
                           }}
                           onBlur={() => sourceIndex === 0 && previewCovenantUrl(i)}
+                        />
+                      ))}
+                    </div>
+                  </Field>
+                  <Field
+                    label="Preauthorized challenge publisher URLs"
+                    hint="These publishers are frozen at origination, must be independent from the primary set, and are the only URLs accepted in a challenge."
+                  >
+                    <div className="space-y-2">
+                      {(c.challenge_source_refs ?? ["", "", ""]).map((url, sourceIndex) => (
+                        <Input
+                          key={sourceIndex}
+                          placeholder={`https://independent-challenge-${sourceIndex + 1}.example/report`}
+                          value={url}
+                          onChange={(e) => {
+                            const next = [...(c.challenge_source_refs ?? ["", "", ""] )];
+                            next[sourceIndex] = e.target.value;
+                            updateCovenant(i, { challenge_source_refs: next });
+                          }}
                         />
                       ))}
                     </div>

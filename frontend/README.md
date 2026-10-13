@@ -23,10 +23,10 @@ Origination first compares Base and GenLayer loan counters. A mismatch stops the
 ## Current contracts
 
 ```text
-NEXT_PUBLIC_CONTRACT_ADDRESS=0xb86d1525014c80F98E7f0C3Be2af60AF3ab761F8
+NEXT_PUBLIC_CONTRACT_ADDRESS=0x1EC71Df45C68F9F52A155DbBC8def172B00819C4
 NEXT_PUBLIC_GENLAYER_NETWORK=studionet
 NEXT_PUBLIC_BASE_USDC_ADDRESS=0x036CbD53842c5426634e7929541eC2318f3dCF7e
-NEXT_PUBLIC_BASE_ESCROW_ADDRESS=0x6b806484E938E8Bf5eD65D1841543931240834ef
+NEXT_PUBLIC_BASE_ESCROW_ADDRESS=0x37913648E096a6E8e97A2f5F31473e31c90c2Fb2
 NEXT_PUBLIC_BACKEND_URL=https://covenant-watch-api.fly.dev
 ```
 
@@ -40,7 +40,7 @@ All `NEXT_PUBLIC_*` values are public configuration. No private key belongs in t
 - Covenant check and challenge routes submit only GenLayer adjudication calls.
 - `/history`, `/profile`, and `/settings` use the indexed API and current public configuration.
 
-Both current contracts started at zero loans. No live E2E loan has been submitted to them, so an empty `/loans` page is expected until user acceptance creates one.
+The live acceptance run created three paired loans on these contracts. `/loans` is populated from indexed chain state rather than fixtures.
 
 ## Local development and verification
 
