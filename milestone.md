@@ -14,16 +14,15 @@ This follows the Meme Olympics chain split, adapted to Covenant Watch's loan sta
 
 | Component | Address / transaction |
 |---|---|
-| Base Sepolia escrow | `0x5e54C6fB260DB3d6C23C547E7aF1309D7fF0054a` |
-| Base deployment tx | `0xf61246967d888ff7c90e41438f8c4fa44f54c38035fb809c7502c99612aa98f9` |
+| Base Sepolia escrow | `0x6b806484E938E8Bf5eD65D1841543931240834ef` |
+| Base deployment tx | `0x7240cc53bb05537aee0ced6675a4760d14204bbdd205676e2b1b8c34c44b5d1f` |
 | Dedicated Base relayer | `0x35F5ea45122eE7Dd5Ec6aA6aab961E9147e3e9e8` |
 | Relayer funding tx | `0xd2088bc32f7cf7143b0e5f44060fc2e0eacdb55fa58264e50d885b031bfdec34` |
 | Base Sepolia USDC | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` |
-| GenLayer adjudicator | `0xA60b429D26831BB3E381b8Bba184D685b6741020` |
-| GenLayer deployment tx | `0x9b8e7493e3eda53c649220b66e6b7773e2f18f58c86acf4423266efbbdebac9d` |
-| GenLayer source helper | `0x78276bCCBE904b989c96a5B19B8E5820Ff0b12AA` |
+| GenLayer adjudicator | `0xb86d1525014c80F98E7f0C3Be2af60AF3ab761F8` |
+| GenLayer deployment tx | `0x15aeb14989c76229ad0e409cb5affdbafea1aca643eef0113eafd5aecf3a4d9b` |
 
-The GenLayer deployment reached `FINALIZED`, executed successfully, and received three `AGREE` validator votes in one round.
+The GenLayer deployment reached `FINALIZED`, executed successfully, and received five `AGREE` validator votes in one round. Both new contracts start with zero loans; no E2E loan was created after this redeployment, per the user's request.
 
 ## Implementation
 
@@ -35,9 +34,9 @@ Backend configuration now includes Base RPC, escrow, USDC, and relayer settings.
 
 The frontend now originates via USDC approval + Base escrow creation before registering covenant terms on GenLayer. Collateral, draw, repayment, and settlement use Base; checks and challenges use GenLayer. Monetary labels use six-decimal USDC. `/loans` renders only backend-indexed GenLayer loans; the former checked-in scenario cards were removed.
 
-## Three live end-to-end scenarios
+## Historical end-to-end scenarios
 
-All three scenarios exist as loan IDs 0–2 on both fresh contracts. Each has a finalized GenLayer `COMPLIANT` check against the deployed signer-registry source and a matching replay-protected Base decision receipt.
+The three scenarios below were executed against the previous milestone deployments. They are retained as historical evidence only and are not present on the current fresh contracts.
 
 1. **Compliant repayment (loan 0):** created and activated on GenLayer, adjudicated compliant, relayed to Base, drawn, repaid with 5% interest, and settled.
 2. **Compliant draw-ready (loan 1):** created and activated on both chains, adjudicated compliant on GenLayer, and unlocked on Base while principal and collateral remain escrowed.
@@ -56,7 +55,7 @@ The matching Foundry suite passes 3/3. Backend tests pass 17/17, the Solidity bu
 
 ## Verification
 
-The production wallet flow supports both networks in one Reown session and
+The production wallet flow uses one directly selected EIP-6963 browser wallet and
 automatically switches Base Sepolia → GenLayer StudioNet during origination.
 It verifies the wallet's actual chain after each switch and presents the USDC
 approval, principal escrow, and GenLayer registration as distinct transaction

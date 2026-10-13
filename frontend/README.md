@@ -117,7 +117,7 @@ URL, and public chain configuration, nothing secret.
 npm install
 cp .env.example .env.local
 # defaults already point at the live deployed contract
-# (0xA60b429D26831BB3E381b8Bba184D685b6741020, studionet) — only
+# (0xb86d1525014c80F98E7f0C3Be2af60AF3ab761F8, studionet) — only
 # NEXT_PUBLIC_BACKEND_URL needs to match wherever
 # you're running backend/ (default http://localhost:8000)
 

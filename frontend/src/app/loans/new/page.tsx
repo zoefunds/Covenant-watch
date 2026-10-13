@@ -9,10 +9,10 @@ import { useWallet } from "@/context/WalletContext";
 import { useSigner } from "@/lib/useSigner";
 import { previewSource, syncLoans } from "@/lib/api";
 import { runTrackedWrite, TxSnapshot } from "@/lib/tx";
-import { createLoan, CovenantInput, VAGUE_CONDITION_FRAGMENTS, CHALLENGE_WINDOW_BOUNDS, MAX_COVENANTS_PER_LOAN } from "@/lib/contract";
+import { createLoan, getLoanCount, CovenantInput, VAGUE_CONDITION_FRAGMENTS, CHALLENGE_WINDOW_BOUNDS, MAX_COVENANTS_PER_LOAN } from "@/lib/contract";
 import { BASE_EXPLORER_URL, CONTRACT_ADDRESS } from "@/lib/config";
 import { usdcToUnits, formatDuration, formatBps } from "@/lib/format";
-import { createBaseLoan } from "@/lib/base";
+import { createBaseLoan, getBaseLoanCount, getBaseLoanState } from "@/lib/base";
 
 type DraftCovenant = CovenantInput & { _previewLoading?: boolean; _previewBody?: string; _previewError?: string };
 
@@ -195,24 +195,54 @@ export default function NewLoanPage() {
     }));
 
     try {
-      // Funds move first and only on Base Sepolia. The wallet shows two real
-      // confirmations: USDC approval, then createLoan/transferFrom into escrow.
-      const baseLoan = await createBaseLoan(
-        signer, normalizedBorrower, principalUsdc, collateralUsdc, interestBps, maturityTs, cleanCovenants.length,
-        (step, hash) => {
-          const labels = {
-            switching_base: "Switching wallet to Base Sepolia…",
-            approving_usdc: hash ? "USDC approval confirmed on Base Sepolia." : "Confirm USDC approval in your wallet…",
-            escrowing_principal: hash ? "Principal escrow confirmed on Base Sepolia." : "Confirm the principal escrow transaction in your wallet…",
-          };
-          setFlowStep(labels[step]);
-          if (hash) setBaseHashes((current) => ({ ...current, [step === "approving_usdc" ? "approval" : "escrow"]: hash }));
+      const genLayerCount = Number(await getLoanCount());
+      const baseCount = await getBaseLoanCount();
+      let effectiveBorrower = normalizedBorrower;
+      let effectivePrincipal = principalUsdc;
+      let effectiveCollateral = collateralUsdc;
+      let effectiveInterestBps = interestBps;
+      let effectiveMaturity = maturityTs;
+      let baseLoan: { loanId: number };
+
+      if (baseCount === genLayerCount + 1) {
+        // Recover an interrupted Base -> GenLayer origination. Never escrow a
+        // second loan while the counters differ: that would permanently bind
+        // different numeric loan IDs across the two contracts.
+        const orphan = await getBaseLoanState(genLayerCount);
+        if (orphan.lender.toLowerCase() !== signer.address.toLowerCase() || orphan.status !== 0 || orphan.principalEscrowed !== orphan.principal) {
+          throw new Error(`Base and GenLayer loan counters differ at loan #${genLayerCount}. Its pending Base escrow belongs to another flow; no new funds were moved.`);
         }
-      );
+        if (orphan.requiredCompliantChecks !== cleanCovenants.length) {
+          throw new Error(`Base loan #${genLayerCount} is waiting for ${orphan.requiredCompliantChecks} covenant(s). Submit exactly that many to recover it; no new funds were moved.`);
+        }
+        effectiveBorrower = orphan.borrower.toLowerCase();
+        effectivePrincipal = (Number(orphan.principal) / 1e6).toString();
+        effectiveCollateral = (Number(orphan.collateralRequired) / 1e6).toString();
+        effectiveInterestBps = orphan.baseInterestBps;
+        effectiveMaturity = orphan.maturity;
+        baseLoan = { loanId: genLayerCount };
+        setFlowStep(`Recovered existing Base loan #${genLayerCount} (${effectivePrincipal} USDC already escrowed). No duplicate Base transaction will be sent.`);
+      } else if (baseCount === genLayerCount) {
+        // New origination: USDC approval, then createLoan/transferFrom.
+        baseLoan = await createBaseLoan(
+          signer, normalizedBorrower, principalUsdc, collateralUsdc, interestBps, maturityTs, cleanCovenants.length,
+          (step, hash) => {
+            const labels = {
+              switching_base: "Switching wallet to Base Sepolia…",
+              approving_usdc: hash ? "USDC approval confirmed on Base Sepolia." : "Confirm USDC approval in your wallet…",
+              escrowing_principal: hash ? "Principal escrow confirmed on Base Sepolia." : "Confirm the principal escrow transaction in your wallet…",
+            };
+            setFlowStep(labels[step]);
+            if (hash) setBaseHashes((current) => ({ ...current, [step === "approving_usdc" ? "approval" : "escrow"]: hash }));
+          }
+        );
+      } else {
+        throw new Error(`Base reports ${baseCount} loans while GenLayer reports ${genLayerCount}. Origination is paused to prevent mismatched loan IDs; no funds were moved.`);
+      }
       if (baseLoan.loanId < 0) throw new Error("Base Sepolia did not return a valid loan id");
       setFlowStep("Switching wallet to GenLayer and requesting the adjudication-record transaction…");
       const result = await runTrackedWrite(
-        () => createLoan(signer, normalizedBorrower, usdcToUnits(principalUsdc), usdcToUnits(collateralUsdc), interestBps, maturityTs, cleanCovenants, challengeWindow),
+        () => createLoan(signer, effectiveBorrower, usdcToUnits(effectivePrincipal), usdcToUnits(effectiveCollateral), effectiveInterestBps, effectiveMaturity, cleanCovenants, challengeWindow),
         setSnap
       );
 

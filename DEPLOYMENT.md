@@ -6,11 +6,10 @@ Last verified: 13 October 2026.
 
 | Component | Value |
 |---|---|
-| GenLayer StudioNet adjudicator | `0xA60b429D26831BB3E381b8Bba184D685b6741020` |
-| GenLayer deploy tx | `0x9b8e7493e3eda53c649220b66e6b7773e2f18f58c86acf4423266efbbdebac9d` |
-| GenLayer source helper | `0x78276bCCBE904b989c96a5B19B8E5820Ff0b12AA` |
-| Base Sepolia escrow | `0x5e54C6fB260DB3d6C23C547E7aF1309D7fF0054a` |
-| Base deploy tx | `0xf61246967d888ff7c90e41438f8c4fa44f54c38035fb809c7502c99612aa98f9` |
+| GenLayer StudioNet adjudicator | `0xb86d1525014c80F98E7f0C3Be2af60AF3ab761F8` |
+| GenLayer deploy tx | `0x15aeb14989c76229ad0e409cb5affdbafea1aca643eef0113eafd5aecf3a4d9b` |
+| Base Sepolia escrow | `0x6b806484E938E8Bf5eD65D1841543931240834ef` |
+| Base deploy tx | `0x7240cc53bb05537aee0ced6675a4760d14204bbdd205676e2b1b8c34c44b5d1f` |
 | Dedicated Base relayer | `0x35F5ea45122eE7Dd5Ec6aA6aab961E9147e3e9e8` |
 | Relayer funding tx | `0xd2088bc32f7cf7143b0e5f44060fc2e0eacdb55fa58264e50d885b031bfdec34` |
 | Base Sepolia USDC | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` |

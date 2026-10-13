@@ -10,8 +10,8 @@ Covenant Watch is a two-chain covenant-monitoring loan protocol. Base Sepolia ho
 |---|---|
 | Frontend | https://covenant-watch.vercel.app |
 | Backend | https://covenant-watch-api.fly.dev |
-| GenLayer adjudicator | `0xA60b429D26831BB3E381b8Bba184D685b6741020` |
-| Base Sepolia escrow | `0x5e54C6fB260DB3d6C23C547E7aF1309D7fF0054a` |
+| GenLayer adjudicator | `0xb86d1525014c80F98E7f0C3Be2af60AF3ab761F8` |
+| Base Sepolia escrow | `0x6b806484E938E8Bf5eD65D1841543931240834ef` |
 | Circle Base Sepolia USDC | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` |
 
 See [milestone.md](./milestone.md) for deployment transactions, three live USDC E2E scenarios, final states, and the full implementation record.

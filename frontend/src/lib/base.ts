@@ -7,6 +7,15 @@ import { BASE_ESCROW_ADDRESS, BASE_USDC_ADDRESS } from "./config";
 
 const escrowAbi = [
   { type: "function", name: "loanCount", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
+  { type: "function", name: "loans", stateMutability: "view", inputs: [{ name: "", type: "uint256" }], outputs: [
+    { name: "lender", type: "address" }, { name: "borrower", type: "address" }, { name: "principal", type: "uint256" },
+    { name: "collateralRequired", type: "uint256" }, { name: "principalEscrowed", type: "uint256" },
+    { name: "collateralEscrowed", type: "uint256" }, { name: "lenderClaimable", type: "uint256" },
+    { name: "borrowerClaimable", type: "uint256" }, { name: "baseInterestBps", type: "uint32" },
+    { name: "currentInterestBps", type: "uint32" }, { name: "maturity", type: "uint64" },
+    { name: "breachTier", type: "uint8" }, { name: "requiredCompliantChecks", type: "uint16" },
+    { name: "compliantChecks", type: "uint16" }, { name: "status", type: "uint8" }, { name: "principalClaimed", type: "bool" }
+  ] },
   { type: "function", name: "createLoan", stateMutability: "nonpayable", inputs: [
     { name: "borrower", type: "address" }, { name: "principal", type: "uint256" },
     { name: "collateral", type: "uint256" }, { name: "interestBps", type: "uint32" },
@@ -75,6 +84,21 @@ export async function createBaseLoan(
   const hash = await send(signer, BASE_ESCROW_ADDRESS, encodeFunctionData({ abi: escrowAbi, functionName: "createLoan", args: [borrower as `0x${string}`, principal, parseUnits(collateralUsdc, 6), interestBps, BigInt(maturity), requiredCompliantChecks] }));
   onStep?.("escrowing_principal", hash);
   return { loanId: Number(loanId), approvalHash, hash };
+}
+
+export async function getBaseLoanCount(): Promise<number> {
+  const client = createPublicClient({ chain: baseSepolia, transport: http() });
+  return Number(await client.readContract({ address: BASE_ESCROW_ADDRESS, abi: escrowAbi, functionName: "loanCount" }));
+}
+
+export async function getBaseLoanState(loanId: number) {
+  const client = createPublicClient({ chain: baseSepolia, transport: http() });
+  const loan = await client.readContract({ address: BASE_ESCROW_ADDRESS, abi: escrowAbi, functionName: "loans", args: [BigInt(loanId)] });
+  return {
+    lender: loan[0], borrower: loan[1], principal: loan[2], collateralRequired: loan[3],
+    principalEscrowed: loan[4], baseInterestBps: Number(loan[8]), maturity: Number(loan[10]),
+    requiredCompliantChecks: Number(loan[12]), status: Number(loan[14]),
+  };
 }
 
 export async function stakeBaseCollateral(signer: Signer, loanId: number, collateralUsdc: string) {
