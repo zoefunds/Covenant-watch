@@ -11,7 +11,8 @@ import { previewSource, syncLoans } from "@/lib/api";
 import { runTrackedWrite, TxSnapshot } from "@/lib/tx";
 import { createLoan, CovenantInput, VAGUE_CONDITION_FRAGMENTS, CHALLENGE_WINDOW_BOUNDS, MAX_COVENANTS_PER_LOAN } from "@/lib/contract";
 import { CONTRACT_ADDRESS } from "@/lib/config";
-import { genToWei, formatDuration, formatBps } from "@/lib/format";
+import { usdcToUnits, formatDuration, formatBps } from "@/lib/format";
+import { createBaseLoan } from "@/lib/base";
 
 type DraftCovenant = CovenantInput & { _previewLoading?: boolean; _previewBody?: string; _previewError?: string };
 
@@ -69,8 +70,8 @@ export default function NewLoanPage() {
   const signer = useSigner();
 
   const [borrower, setBorrower] = useState("");
-  const [principalGen, setPrincipalGen] = useState("");
-  const [collateralGen, setCollateralGen] = useState("");
+  const [principalUsdc, setPrincipalUsdc] = useState("");
+  const [collateralUsdc, setCollateralUsdc] = useState("");
   const [interestBps, setInterestBps] = useState(500);
   const [maturityDate, setMaturityDate] = useState("");
   const [challengeWindow, setChallengeWindow] = useState(CHALLENGE_WINDOW_BOUNDS.default);
@@ -87,8 +88,8 @@ export default function NewLoanPage() {
     // Borrower is a counterparty distinct from the connected wallet, so this
     // is a realistic-format example address, not a fabricated live one.
     setBorrower("0x8f3a2Cc1B4e6D9057F1a1b2C3d4E5f60718293A4");
-    setPrincipalGen("1000");
-    setCollateralGen("1500");
+    setPrincipalUsdc("100");
+    setCollateralUsdc("150");
     setInterestBps(500);
     const inSixWeeks = new Date(Date.now() + 42 * 24 * 60 * 60 * 1000);
     setMaturityDate(inSixWeeks.toISOString().slice(0, 16));
@@ -135,12 +136,12 @@ export default function NewLoanPage() {
       setFormError("Borrower must be a valid 0x address.");
       return;
     }
-    if (!principalGen || Number(principalGen) <= 0) {
-      setFormError("Principal must be a positive GEN amount.");
+    if (!principalUsdc || Number(principalUsdc) <= 0) {
+      setFormError("Principal must be a positive USDC amount.");
       return;
     }
-    if (!collateralGen || Number(collateralGen) <= 0) {
-      setFormError("Collateral must be a positive GEN amount.");
+    if (!collateralUsdc || Number(collateralUsdc) <= 0) {
+      setFormError("Collateral must be a positive USDC amount.");
       return;
     }
     if (!maturityDate) {
@@ -182,17 +183,21 @@ export default function NewLoanPage() {
       tier2_seizure_bps: c.tier2_seizure_bps,
     }));
 
+    // Funds move first and only on Base Sepolia. GenLayer receives the same
+    // terms afterward and is used exclusively for covenant adjudication.
+    const baseLoan = await createBaseLoan(signer, borrower, principalUsdc, collateralUsdc, interestBps, maturityTs);
+    if (baseLoan.loanId < 0) throw new Error("Base Sepolia did not return a valid loan id");
     const result = await runTrackedWrite(
       () =>
         createLoan(
           signer,
           borrower,
-          genToWei(collateralGen),
+          usdcToUnits(principalUsdc),
+          usdcToUnits(collateralUsdc),
           interestBps,
           maturityTs,
           cleanCovenants,
-          challengeWindow,
-          genToWei(principalGen)
+          challengeWindow
         ),
       setSnap
     );
@@ -213,9 +218,7 @@ export default function NewLoanPage() {
         <div>
           <h1 className="text-2xl font-semibold text-on-surface">Originate a loan</h1>
           <p className="mt-1 text-sm text-on-surface-variant">
-            Defines principal, checkable covenants, and a graduated consequence schedule. This writes a real
-            <code className="mx-1 font-onchain text-xs">create_loan</code> transaction with the principal attached as
-            call value.
+            Escrows principal in Base Sepolia USDC, then registers checkable covenants on GenLayer for adjudication.
           </p>
         </div>
         <Button variant="secondary" onClick={fillSampleData} className="shrink-0">
@@ -244,11 +247,11 @@ export default function NewLoanPage() {
                 </p>
               )}
             </Field>
-            <Field label="Principal (GEN)" hint="Attached as the transaction's call value">
-              <Input placeholder="1000" value={principalGen} onChange={(e) => setPrincipalGen(e.target.value)} />
+            <Field label="Principal (USDC)" hint="Escrowed on Base Sepolia">
+              <Input placeholder="100" value={principalUsdc} onChange={(e) => setPrincipalUsdc(e.target.value)} />
             </Field>
-            <Field label="Required collateral (GEN)" hint="Borrower must lock this exact amount">
-              <Input placeholder="1500" value={collateralGen} onChange={(e) => setCollateralGen(e.target.value)} />
+            <Field label="Required collateral (USDC)" hint="Borrower stakes this amount on Base Sepolia">
+              <Input placeholder="150" value={collateralUsdc} onChange={(e) => setCollateralUsdc(e.target.value)} />
             </Field>
             <Field label="Base interest (bps)">
               <Input
@@ -411,11 +414,11 @@ export default function NewLoanPage() {
           <div className="grid grid-cols-2 gap-y-2 text-xs sm:grid-cols-4">
             <div>
               <p className="text-on-surface-variant">Principal</p>
-              <p className="font-onchain text-on-surface">{principalGen || "—"} GEN</p>
+              <p className="font-onchain text-on-surface">{principalUsdc || "—"} USDC</p>
             </div>
             <div>
               <p className="text-on-surface-variant">Required collateral</p>
-              <p className="font-onchain text-primary-container">{collateralGen || "—"} GEN</p>
+              <p className="font-onchain text-primary-container">{collateralUsdc || "—"} USDC</p>
             </div>
             <div>
               <p className="text-on-surface-variant">Base interest</p>

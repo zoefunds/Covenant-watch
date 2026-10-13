@@ -13,3 +13,5 @@ build/
 .venv/
 venv/
 .DS_Store
+out/
+cache/

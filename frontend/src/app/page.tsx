@@ -9,7 +9,7 @@ import Link from "next/link";
 
 const LOOP = [
   { title: "Loan + covenants", body: "Lender defines principal, checkable covenants, and a graduated consequence schedule." },
-  { title: "Locked collateral", body: "Borrower escrows the exact GEN collateral amount before drawing principal." },
+  { title: "USDC collateral", body: "Borrower stakes the exact USDC collateral amount on Base Sepolia before drawing principal." },
   { title: "Check trigger", body: "Either party triggers a covenant check; the pinned source is snapshotted on-chain first." },
   { title: "Validator inspection", body: "GenLayer validators independently fetch or read the pinned source." },
   { title: "Equivalence", body: "Structured results are compared with numeric tolerance — not a brittle exact-match." },

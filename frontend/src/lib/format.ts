@@ -29,6 +29,18 @@ export function genToWei(gen: string): bigint {
   return wholeBig * WEI_PER_GEN + fracBig;
 }
 
+export function usdcToUnits(usdc: string): bigint {
+  const [whole, frac = ""] = usdc.trim().split(".");
+  return BigInt(whole || "0") * 1_000_000n + BigInt((frac + "000000").slice(0, 6));
+}
+
+export function formatUsdc(value: number | string | bigint | undefined | null): string {
+  if (value === undefined || value === null) return "—";
+  const units = BigInt(String(value));
+  const fraction = (units % 1_000_000n).toString().padStart(6, "0").replace(/0+$/, "");
+  return `${units / 1_000_000n}${fraction ? `.${fraction}` : ""} USDC`;
+}
+
 export function formatBps(bps: number | undefined | null): string {
   if (bps === undefined || bps === null) return "—";
   return `${(bps / 100).toFixed(2)}%`;

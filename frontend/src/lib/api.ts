@@ -54,6 +54,7 @@ export const listLoans = (params?: { lender?: string; borrower?: string }) => {
 export const syncLoans = () => req<any[]>("/loans/sync", { method: "POST" });
 
 export const getLoanCached = (loanId: number) => req<any>(`/loans/${loanId}`);
+export const getBaseLoan = (loanId: number) => req<any>(`/loans/${loanId}/base`);
 export const getLoanCovenantsCached = (loanId: number) => req<any[]>(`/loans/${loanId}/covenants`);
 export const getLoanChecksCached = (loanId: number) => req<any[]>(`/loans/${loanId}/checks`);
 export const getCovenantCached = (covenantId: number) => req<any>(`/covenants/${covenantId}`);

@@ -189,24 +189,21 @@ export const getCooldownRemaining = (loanId: number, covenantId: number, address
 export const createLoan = (
   signer: Signer,
   borrower: string,
+  principalUsdc: bigint,
   collateralWei: bigint,
   baseInterestBps: number,
   maturityTs: number,
   covenants: CovenantInput[],
   challengeWindowSeconds: number,
-  principalWei: bigint
 ) =>
   write(
     signer,
     "create_loan",
-    [borrower, collateralWei, baseInterestBps, maturityTs, JSON.stringify(covenants), challengeWindowSeconds],
-    principalWei
+    [borrower, principalUsdc, collateralWei, baseInterestBps, maturityTs, JSON.stringify(covenants), challengeWindowSeconds]
   );
 
-export const lockCollateral = (signer: Signer, loanId: number, collateralWei: bigint) =>
-  write(signer, "lock_collateral", [loanId], collateralWei);
-
-export const claimPrincipal = (signer: Signer, loanId: number) => write(signer, "claim_principal", [loanId]);
+export const activateBaseLoan = (signer: Signer, loanId: number, baseTxHash: string) =>
+  write(signer, "activate_base_loan", [loanId, baseTxHash]);
 
 export const triggerCovenantCheck = (signer: Signer, loanId: number, covenantId: number) =>
   write(signer, "trigger_covenant_check", [loanId, covenantId]);
@@ -221,16 +218,3 @@ export const submitChallengeEvidence = (
 
 export const finalizeCovenantCheck = (signer: Signer, loanId: number, checkId: number) =>
   write(signer, "finalize_covenant_check", [loanId, checkId]);
-
-export const repayLoan = (signer: Signer, loanId: number, amountWei: bigint) =>
-  write(signer, "repay_loan", [loanId], amountWei);
-
-export const reclaimCollateralTimeout = (signer: Signer, loanId: number) =>
-  write(signer, "reclaim_collateral_timeout", [loanId]);
-
-export const settleMaturedLoan = (signer: Signer, loanId: number) =>
-  write(signer, "settle_matured_loan", [loanId]);
-
-export const cancelLoan = (signer: Signer, loanId: number) => write(signer, "cancel_loan", [loanId]);
-
-export const claimSettlement = (signer: Signer, loanId: number) => write(signer, "claim_settlement", [loanId]);

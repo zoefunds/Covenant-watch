@@ -1,4 +1,4 @@
-import { formatGen } from "@/lib/format";
+import { formatUsdc } from "@/lib/format";
 
 // Collateral Health Gauge — ratio of collateral currently deposited/held
 // vs. principal outstanding, driven from real loan ledger fields.
@@ -29,7 +29,7 @@ export function CollateralGauge({
         <div className={`h-full rounded-full ${color} transition-all`} style={{ width: `${pct}%` }} />
       </div>
       <p className="mt-1 font-onchain text-xs text-on-surface-variant">
-        {formatGen(collateralWei)} collateral vs {formatGen(principalWei)} principal
+        {formatUsdc(collateralWei)} collateral vs {formatUsdc(principalWei)} principal
       </p>
     </div>
   );

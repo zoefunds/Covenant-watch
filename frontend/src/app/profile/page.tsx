@@ -6,7 +6,7 @@ import { useWallet } from "@/context/WalletContext";
 import { listLoans } from "@/lib/api";
 import { Card, EmptyState, ErrorState, LoadingState, Mono } from "@/components/ui";
 import { StatusBadge } from "@/components/StatusBadge";
-import { formatGen, shortAddr } from "@/lib/format";
+import { formatUsdc, shortAddr } from "@/lib/format";
 import { CONTRACT_ADDRESS } from "@/lib/config";
 
 export default function ProfilePage() {
@@ -68,7 +68,7 @@ export default function ProfilePage() {
                 <Card className="flex items-center justify-between transition-colors hover:border-primary-container/50">
                   <div>
                     <p className="text-sm text-on-surface">
-                      Loan #{loan.chain_loan_id} · {role} · {formatGen(loan.principal_wei)}
+                      Loan #{loan.chain_loan_id} · {role} · {formatUsdc(loan.principal_wei)}
                     </p>
                     <p className="mt-1 font-onchain text-xs text-on-surface-variant">
                       Counterparty {shortAddr(role === "Lender" ? loan.borrower_address : loan.lender_address)}

@@ -43,10 +43,8 @@ TRUST BOUNDARY (spec section 7) — enforced in code, not merely documented:
     See _classify_offchain_result() and the fetch-failure branch of
     _evaluate_covenant_leader().
   * The nondet functions (leader_fn/validator_fn below) return ONLY the
-    structured result dict. No nondet function anywhere calls _send_gen or
-    touches a ledger field. Fund movement lives exclusively in
-    _apply_consequence() / _send_gen(), which are ordinary deterministic
-    methods never invoked from inside gl.vm.run_nondet_unsafe.
+    structured result dict. No nondet function touches economic state.
+    All value movement is enforced by the Base Sepolia USDC contract.
   * submit_challenge_evidence() only APPENDS an evidence entry to
     CheckRecord.challenge_evidence_urls / challenge_evidence_notes — it never
     rewrites covenant.source_ref. Re-evaluation re-reads the same pinned
@@ -70,8 +68,8 @@ from genlayer import *
 # ============================================================================
 
 # ---- Loan lifecycle ---------------------------------------------------------
-LOAN_CREATED: int = 0            # principal escrowed by lender, awaiting collateral
-LOAN_ACTIVE: int = 1             # collateral locked, principal claimable/claimed by borrower
+LOAN_CREATED: int = 0            # terms registered, awaiting Base collateral marker
+LOAN_ACTIVE: int = 1             # Base collateral stake recorded
 LOAN_BREACH_TIER1: int = 2       # first confirmed breach applied (interest step-up); loan continues
 LOAN_BREACH_TIER2: int = 3       # second confirmed breach applied (partial seizure); loan continues
 LOAN_DEFAULTED: int = 4          # third confirmed breach applied (full seizure); terminal
@@ -191,8 +189,7 @@ MAX_CHALLENGES_PER_CHECK: int = 3
 MAX_ABS_THRESHOLD: float = 1_000_000_000_000.0
 MAX_COVENANTS_JSON_LEN: int = 20_000
 
-# Repayment grace after maturity before permissionless deterministic
-# settlement. Drawn/unpaid loans default; undrawn loans unwind both escrows.
+# Mirrored Base contract maturity grace, retained for UI/read compatibility.
 MATURITY_GRACE_SECONDS: int = 14 * 24 * 60 * 60
 
 # ---- Error prefixes — deterministic, machine-parseable failure classes -------
@@ -522,29 +519,11 @@ def _handle_leader_error(leaders_res, leader_fn) -> bool:
 
 
 # ============================================================================
-#  Value-transfer primitives — the ONLY code path that moves GEN out of the
-#  contract ("ShipBond" pattern). Never called from inside a nondet function.
+#  Payment boundary
+#
+#  This contract is adjudication-only. USDC principal, collateral staking,
+#  repayment, and settlement live in contracts/base/CovenantWatchEscrow.sol.
 # ============================================================================
-
-@gl.evm.contract_interface
-class _Recipient:
-    class View:
-        pass
-
-    class Write:
-        pass
-
-
-def _send_gen(to_address: str, amount) -> None:
-    """Single emission choke point for every outbound native-GEN transfer in
-    this contract. Callers MUST zero the relevant ledger field(s) and persist
-    state BEFORE calling this — never after — so a repeated/duplicate call
-    always finds the balance already at zero and can never double-spend."""
-    _require(bool(to_address) and to_address != "", "recipient address must not be empty")
-    amt = int(amount)
-    _require(amt > 0, "transfer amount must be positive")
-    _Recipient(Address(to_address)).emit_transfer(value=u256(amt))
-
 
 # ============================================================================
 #  The Contract
@@ -568,6 +547,9 @@ class CovenantWatch(gl.Contract):
 
     # cooldown ledger, keyed "{loan_id}:{covenant_id}:{0xaddress}"
     last_trigger_ts: TreeMap[str, u64]
+    # Base Sepolia transaction hashes are audit/idempotency markers only.
+    base_activation_tx: TreeMap[u32, str]
+    decision_relay_tx: TreeMap[u32, str]
 
     def __init__(self):
         self.owner = gl.message.sender_address
@@ -644,7 +626,7 @@ class CovenantWatch(gl.Contract):
     #
     #  Output contract (spec section 7 / 10): ONLY ever returns
     #    {status, observed_value_scaled, observed_note, source_hash}
-    #  Never touches a ledger field, never calls _send_gen.
+    #  Never touches payment state; Base Sepolia is the economic authority.
     # ------------------------------------------------------------------------
 
     def _evaluate_onchain(self, covenant: Covenant) -> dict:
@@ -988,13 +970,13 @@ Respond with ONLY a JSON object, no markdown, with exactly these keys:
         return result
 
     # ========================================================================
-    #  DETERMINISTIC settlement — the ONLY place fund/consequence logic lives.
-    #  Never called from inside gl.vm.run_nondet_unsafe.
+    #  DETERMINISTIC decision recording. No value can move on GenLayer.
     # ========================================================================
 
     def _apply_consequence(self, loan: Loan, covenant: Covenant, now_ts: int) -> None:
         """Applies the precommitted consequence for a newly-confirmed breach.
-        Pure ledger/state mutation — no nondet calls of any kind here."""
+        Records the adjudicated tier only. The matching finalized decision is
+        relayed to Base Sepolia, where all USDC consequences are enforced."""
         covenant.confirmed_breach_count = u32(int(covenant.confirmed_breach_count) + 1)
         # Consequence escalation belongs to the loan, not an individual
         # covenant. Breaches of three different promises must still progress
@@ -1003,62 +985,38 @@ Respond with ONLY a JSON object, no markdown, with exactly these keys:
         loan.breach_tier = u8(tier)
 
         if tier == 1:
-            # Exit path 2 — tier1 interest step-up. Deliberately NO fund
-            # movement here: the consequence is a change to the ongoing
-            # interest rate applied at repayment, not an immediate seizure.
             step_up = int(covenant.tier1_interest_step_up_bps)
             loan.current_interest_bps = u32(int(loan.current_interest_bps) + step_up)
             if int(loan.status) not in TERMINAL_LOAN_STATUSES:
                 loan.status = u8(LOAN_BREACH_TIER1)
 
         elif tier == 2:
-            # Exit path 3 — tier2 partial seizure to lender, remainder stays
-            # escrowed toward the borrower's eventual repayment/return.
-            collateral = int(loan.collateral_deposited)
-            seize_bps = int(covenant.tier2_seizure_bps)
-            seize_amount = (collateral * seize_bps) // BPS_DENOMINATOR
-            seize_amount = min(seize_amount, collateral)
-            # Zero-then-credit ordering on the ledger field being reduced.
-            loan.collateral_deposited = u256(collateral - seize_amount)
-            loan.claimable_lender_wei = u256(int(loan.claimable_lender_wei) + seize_amount)
             if int(loan.status) not in TERMINAL_LOAN_STATUSES:
                 loan.status = u8(LOAN_BREACH_TIER2)
 
         else:
-            # Exit path 4 — tier3 full seizure to lender; terminal default.
-            collateral = int(loan.collateral_deposited)
-            loan.collateral_deposited = u256(0)
-            loan.claimable_lender_wei = u256(int(loan.claimable_lender_wei) + collateral)
-            # If default happens before the borrower draws the principal, the
-            # lender's still-escrowed principal must be returned, not left
-            # claimable by the defaulted borrower or stranded forever.
-            undrawn_principal = int(loan.principal_deposited)
-            if undrawn_principal > 0:
-                loan.principal_deposited = u256(0)
-                loan.claimable_lender_wei = u256(int(loan.claimable_lender_wei) + undrawn_principal)
             loan.status = u8(LOAN_DEFAULTED)
 
     # ========================================================================
     #  PUBLIC WRITES — loan lifecycle
     # ========================================================================
 
-    @gl.public.write.payable
+    @gl.public.write
     def create_loan(
         self,
         borrower: str,
+        principal_wei: int,
         collateral_wei: int,
         base_interest_bps: int,
         maturity_ts: int,
         covenants_json: str,
         challenge_window_seconds: int = 0,
     ) -> int:
-        """Create a loan. Attach the GEN principal as call value. Returns the
-        new loan id.
+        """Register Base Sepolia USDC loan terms for GenLayer adjudication.
 
         Args:
             borrower: hex address of the borrower.
-            collateral_wei: exact GEN amount the borrower must later lock via
-                lock_collateral() — enforced as an exact match there.
+            collateral_wei: exact six-decimal USDC amount staked on Base.
             base_interest_bps: starting interest rate in basis points.
             maturity_ts: unix time the loan is due for repayment.
             covenants_json: JSON array of 1..MAX_COVENANTS_PER_LOAN covenant
@@ -1071,10 +1029,10 @@ Respond with ONLY a JSON object, no markdown, with exactly these keys:
                 must be within [6h, 7d].
         """
         sender = gl.message.sender_address
-        principal = int(gl.message.value)
+        principal = int(principal_wei)
         now_ts = self._now_ts()
 
-        _require(principal > 0, "principal (call value) must be positive")
+        _require(principal > 0, "principal_usdc must be positive")
         _require(collateral_wei > 0, "collateral_wei must be positive")
         _require(0 <= base_interest_bps <= 100_00, "base_interest_bps out of sane range")
         _require(maturity_ts > now_ts, "maturity_ts must be in the future")
@@ -1111,7 +1069,7 @@ Respond with ONLY a JSON object, no markdown, with exactly these keys:
             maturity_ts=u64(maturity_ts),
             challenge_window_seconds=u64(window),
             covenant_count=u32(len(validated)),
-            principal_deposited=u256(principal),
+            principal_deposited=u256(0),
             principal_claimed=False,
             collateral_deposited=u256(0),
             current_interest_bps=u32(base_interest_bps),
@@ -1148,43 +1106,22 @@ Respond with ONLY a JSON object, no markdown, with exactly these keys:
 
         return loan_id
 
-    @gl.public.write.payable
-    def lock_collateral(self, loan_id: int) -> None:
-        """Borrower escrows the exact collateral amount specified at loan
-        creation. Amount is read ONLY from gl.message.value, never from a
-        parameter, and must match loan.collateral_wei exactly."""
+    @gl.public.write
+    def activate_base_loan(self, loan_id: int, base_tx_hash: str) -> None:
+        """Record that the borrower staked collateral on Base Sepolia.
+
+        This is an audit marker, not a payment action. The Base contract is
+        authoritative for funds and independently enforces caller and amount.
+        """
         loan = self._get_loan(loan_id)
         sender = gl.message.sender_address
-        amount = int(gl.message.value)
-
         _require(sender == loan.borrower, "only the designated borrower may lock collateral")
         _require(int(loan.status) == LOAN_CREATED, "loan is not awaiting collateral")
         _require(self._now_ts() < int(loan.maturity_ts), "cannot lock collateral after loan maturity")
-        _require(amount == int(loan.collateral_wei), "collateral amount must exactly match loan terms")
-
-        loan.collateral_deposited = u256(amount)
+        tx_hash = base_tx_hash.strip()
+        _require(len(tx_hash) == 66 and tx_hash.startswith("0x"), "invalid Base transaction hash")
+        self.base_activation_tx[u32(loan_id)] = tx_hash
         loan.status = u8(LOAN_ACTIVE)
-
-    @gl.public.write
-    def claim_principal(self, loan_id: int) -> None:
-        """Pull-based draw of the escrowed principal by the borrower, once
-        collateral is locked and every covenant's latest check is finalized
-        COMPLIANT. Zero-then-transfer ordering."""
-        loan = self._get_loan(loan_id)
-        sender = gl.message.sender_address
-        _require(sender == loan.borrower, "only the borrower may claim the principal")
-        _require(int(loan.status) in (LOAN_ACTIVE, LOAN_BREACH_TIER1, LOAN_BREACH_TIER2),
-                  "principal can only be claimed while the loan is active")
-        _require(not bool(loan.principal_claimed), "principal already claimed")
-        _require(self._principal_claim_ready(loan_id),
-                 "all covenants require a latest finalized COMPLIANT check before principal claim")
-
-        amount = int(loan.principal_deposited)
-        _require(amount > 0, "no principal to claim")
-
-        loan.principal_claimed = True
-        loan.principal_deposited = u256(0)
-        _send_gen(loan.borrower.as_hex, amount)
 
     # ------------------------------------------------------------------------
     #  Covenant check trigger + nondet evaluation
@@ -1368,140 +1305,18 @@ Respond with ONLY a JSON object, no markdown, with exactly these keys:
         # False (they are finalized immediately in _store_check_result /
         # submit_challenge_evidence), so no other branch is possible.
 
-    # ------------------------------------------------------------------------
-    #  Repayment / compliant exit (exit path 1)
-    # ------------------------------------------------------------------------
-
-    @gl.public.write.payable
-    def repay_loan(self, loan_id: int) -> None:
-        """Borrower repays principal + accrued interest. Interest is
-        deliberately simple (flat rate on principal, not compounding) to
-        keep the on-chain math auditable: interest_wei = principal *
-        current_interest_bps / 10000. Once the attached value covers that
-        total, the loan is marked REPAID and the (possibly tier2-reduced)
-        remaining collateral becomes claimable by the borrower, while the
-        repayment becomes claimable by the lender."""
-        loan = self._get_loan(loan_id)
-        sender = gl.message.sender_address
-        amount = int(gl.message.value)
-
-        _require(sender == loan.borrower, "only the borrower may repay")
-        _require(int(loan.status) in (LOAN_ACTIVE, LOAN_BREACH_TIER1, LOAN_BREACH_TIER2),
-                  "loan is not in a repayable state")
-        _require(bool(loan.principal_claimed), "principal must be claimed before repayment")
-        _require(amount > 0, "repayment amount must be positive")
-
-        principal = int(loan.principal_wei)
-        interest = (principal * int(loan.current_interest_bps)) // BPS_DENOMINATOR
-        total_due = principal + interest
-
-        # This contract is intentionally a single-payment loan. Accepting an
-        # amount above total_due would otherwise gift the overpayment to the
-        # lender; accepting a partial payment would strand value because a
-        # revert rolls back the attached transfer. Require the exact due.
-        _require(amount == total_due,
-                  f"repayment must equal the exact total due of {total_due} wei")
-
-        loan.status = u8(LOAN_REPAID)
-        loan.claimable_lender_wei = u256(int(loan.claimable_lender_wei) + total_due)
-        loan.repaid_amount_wei = u256(0)
-        remaining_collateral = int(loan.collateral_deposited)
-        if remaining_collateral > 0:
-            loan.collateral_deposited = u256(0)
-            loan.claimable_borrower_wei = u256(int(loan.claimable_borrower_wei) + remaining_collateral)
-
-    # ------------------------------------------------------------------------
-    #  Timeout / cancellation exits (exit paths 5 and 6)
-    # ------------------------------------------------------------------------
-
-    def _settle_matured_loan(self, loan: Loan) -> None:
-        """Deterministically close an unpaid loan after its repayment grace.
-
-        Undrawn principal means the loan never economically commenced, so
-        each side receives its own escrow. Drawn principal means the debt is
-        unpaid at maturity, so all remaining collateral is credited to the
-        lender and the loan defaults. No caller identity or backend decision
-        influences this branch.
-        """
-        _require(int(loan.status) in (LOAN_ACTIVE, LOAN_BREACH_TIER1, LOAN_BREACH_TIER2),
-                  "loan is not in a maturity-settleable state")
-        now_ts = self._now_ts()
-        _require(now_ts >= int(loan.maturity_ts) + MATURITY_GRACE_SECONDS,
-                  "maturity repayment grace period has not yet elapsed")
-
-        collateral = int(loan.collateral_deposited)
-        loan.collateral_deposited = u256(0)
-        if bool(loan.principal_claimed):
-            # The borrower received the debt principal and did not repay by
-            # the end of grace. Remaining collateral belongs to the lender.
-            loan.claimable_lender_wei = u256(int(loan.claimable_lender_wei) + collateral)
-            loan.breach_tier = u8(3)
-            loan.status = u8(LOAN_DEFAULTED)
-        else:
-            # No draw occurred: unwind both escrows to their original owners.
-            loan.claimable_borrower_wei = u256(int(loan.claimable_borrower_wei) + collateral)
-            undrawn_principal = int(loan.principal_deposited)
-            loan.principal_deposited = u256(0)
-            loan.claimable_lender_wei = u256(int(loan.claimable_lender_wei) + undrawn_principal)
-            loan.status = u8(LOAN_TIMEOUT_RECLAIMED)
-
     @gl.public.write
-    def settle_matured_loan(self, loan_id: int) -> None:
-        """Permissionless maturity progression after the repayment grace."""
-        self._settle_matured_loan(self._get_loan(loan_id))
-
-    @gl.public.write
-    def reclaim_collateral_timeout(self, loan_id: int) -> None:
-        """Backward-compatible entry point for maturity settlement.
-
-        The borrower may call it, but a drawn and unpaid loan defaults to the
-        lender; it can never return collateral to a non-paying borrower.
-        """
-        loan = self._get_loan(loan_id)
-        _require(gl.message.sender_address == loan.borrower,
-                  "only the borrower may use the legacy reclaim entry point")
-        self._settle_matured_loan(loan)
-
-    @gl.public.write
-    def cancel_loan(self, loan_id: int) -> None:
-        """Exit path 6 — the lender may cancel before the borrower has
-        locked collateral (i.e. before both sides have committed funds),
-        reclaiming the escrowed principal in full."""
-        loan = self._get_loan(loan_id)
-        sender = gl.message.sender_address
-        _require(sender == loan.lender, "only the lender may cancel")
-        _require(int(loan.status) == LOAN_CREATED, "loan can only be cancelled before collateral is locked")
-
-        principal = int(loan.principal_deposited)
-        loan.status = u8(LOAN_CANCELLED)
-        if principal > 0:
-            loan.principal_deposited = u256(0)
-            loan.claimable_lender_wei = u256(int(loan.claimable_lender_wei) + principal)
-
-    # ------------------------------------------------------------------------
-    #  Pull-based withdrawal — the single settlement point for every
-    #  claimable balance produced above (repayment, seizure, reclaim, cancel).
-    # ------------------------------------------------------------------------
-
-    @gl.public.write
-    def claim_settlement(self, loan_id: int) -> None:
-        """Pull-based claim of whichever claimable_* balance belongs to the
-        caller. Guard-then-zero-then-transfer ordering, so a second call
-        always finds zero and cannot double-claim."""
-        loan = self._get_loan(loan_id)
-        sender = gl.message.sender_address
-        _require(sender == loan.lender or sender == loan.borrower, "not a party to this loan")
-
-        if sender == loan.lender:
-            amount = int(loan.claimable_lender_wei)
-            _require(amount > 0, "nothing claimable for the lender")
-            loan.claimable_lender_wei = u256(0)
-            _send_gen(loan.lender.as_hex, amount)
-        else:
-            amount = int(loan.claimable_borrower_wei)
-            _require(amount > 0, "nothing claimable for the borrower")
-            loan.claimable_borrower_wei = u256(0)
-            _send_gen(loan.borrower.as_hex, amount)
+    def mark_decision_relayed(self, check_id: int, base_tx_hash: str) -> None:
+        """Attach the confirmed Base Sepolia relay transaction to a finalized
+        decision. This idempotency/audit marker cannot move funds."""
+        check = self._get_check(check_id)
+        _require(bool(check.finalized), "decision is not finalized")
+        _require(gl.message.sender_address == self.owner, "only the relayer owner may mark a relay")
+        key = u32(check_id)
+        _require(self.decision_relay_tx.get(key) is None, "decision already marked relayed")
+        tx_hash = base_tx_hash.strip()
+        _require(len(tx_hash) == 66 and tx_hash.startswith("0x"), "invalid Base transaction hash")
+        self.decision_relay_tx[key] = tx_hash
 
     # ========================================================================
     #  VIEWS

@@ -1,0 +1,128 @@
+{
+  "network": "Base Sepolia",
+  "chainId": 84532,
+  "escrow": "0x8a34e37A4A1Fe74848389F13033099c0Fe889472",
+  "usdc": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+  "deploymentTransaction": "0xee049ce31c65e90f1f1a605f342ef796e21814cd1d6e7e4ab9fd424fc9e5a604",
+  "runAt": "2026-10-13T14:07:10Z",
+  "scenarios": [
+    {
+      "scenario": 1,
+      "title": "Compliant repayment",
+      "summary": "10 USDC principal, 15 USDC stake, 5% interest; compliant decision, principal draw, repayment, and both settlement claims confirmed.",
+      "loanId": 0,
+      "borrower": "0x642bf030B270e69F8f0eD60FEA08CB67A71f7b6c",
+      "transactions": {
+        "LoanCreated": [
+          "d90cd06509cfedd31eeb7b10391ac74107dae54bfe46f44c773b427614c99c37"
+        ],
+        "CollateralStaked": [
+          "78ed8ede26bdf32c29e379321df0a7761ae0fd4cda26d4196c574fca97b5dd86"
+        ],
+        "PrincipalClaimed": [
+          "a3f365470368cddc689988cc789f2d573121495ba3db7fb7f378f1e74656edae"
+        ],
+        "DecisionApplied": [
+          "3835013739e1852eacdd157f3150c5c3484d509f2f42f2e32fe73949460900f5"
+        ],
+        "Repaid": [
+          "19bcf67d822ebf6c2ec7d074b62c5338eaf969d5b2aa5b5a877f591c6a013685"
+        ],
+        "SettlementClaimed": [
+          "777c719d48d4461fe592bb240cf1ef980e270e24005c26678b7294b62305f019",
+          "bdefe5df96d9a5c4adcbf4ba14f1f96c243eb9e8d20bd31dd532865406fa9d76"
+        ]
+      },
+      "finalState": {
+        "lender": "0x7401c129EDfc26E68FE19309fE461eb3Db1058Eb",
+        "borrower": "0x642bf030B270e69F8f0eD60FEA08CB67A71f7b6c",
+        "principal": 10000000,
+        "collateralRequired": 15000000,
+        "principalEscrowed": 0,
+        "collateralEscrowed": 0,
+        "lenderClaimable": 0,
+        "borrowerClaimable": 0,
+        "baseInterestBps": 500,
+        "currentInterestBps": 500,
+        "maturity": 1794492355,
+        "breachTier": 0,
+        "status": 5,
+        "principalClaimed": true
+      }
+    },
+    {
+      "scenario": 2,
+      "title": "Graduated breach",
+      "summary": "Two unique finalized breach decisions raised interest from 5% to 7% and allocated 3.75 USDC (25%) of collateral to the lender.",
+      "loanId": 1,
+      "borrower": "0xcB59b8529A08C05A3aA57Dc8938FAb59c7129B3D",
+      "transactions": {
+        "LoanCreated": [
+          "04d50192cf1493b9fa241243eaaf39768dfe51f9b8a3b95b9736eb56bea1020c"
+        ],
+        "CollateralStaked": [
+          "ee3006fa9e45b74fa778f3f5b7223e1af141ad05f66397aed2c4ad27f0967ee2"
+        ],
+        "DecisionApplied": [
+          "ea4e617991f5abe6abee129e87bdeb69bfc3a8fa59ec64ced2460a0ba011203c",
+          "c8866ee65eedd590d0dc9beb7548b3bb80ac003f58903932b2ce61c49d1721ee"
+        ]
+      },
+      "finalState": {
+        "lender": "0x7401c129EDfc26E68FE19309fE461eb3Db1058Eb",
+        "borrower": "0xcB59b8529A08C05A3aA57Dc8938FAb59c7129B3D",
+        "principal": 10000000,
+        "collateralRequired": 15000000,
+        "principalEscrowed": 10000000,
+        "collateralEscrowed": 11250000,
+        "lenderClaimable": 3750000,
+        "borrowerClaimable": 0,
+        "baseInterestBps": 500,
+        "currentInterestBps": 700,
+        "maturity": 1794492371,
+        "breachTier": 2,
+        "status": 3,
+        "principalClaimed": false
+      }
+    },
+    {
+      "scenario": 3,
+      "title": "Tier-3 default",
+      "summary": "Three replay-protected breach decisions produced terminal default; all remaining collateral plus undrawn principal became lender claimable and was claimed.",
+      "loanId": 2,
+      "borrower": "0x8AcFe882ce401a7256A58Ca025A6EBb16EDCc39e",
+      "transactions": {
+        "LoanCreated": [
+          "a0eeeea3979465f197ac52c15e131af2b7292f9eb040c2e35cdba0adf0e63c75"
+        ],
+        "CollateralStaked": [
+          "315a586521effb82a569c12fbea17b462884da89dd2b3721f4234d6a4342ec5a"
+        ],
+        "DecisionApplied": [
+          "fb9c11bba767694e1602efe3a3a18c8fceeb4f2d2408c3d05ef9d042f4d2e121",
+          "8e7dbec4c1d4347afadc2b284cfdaf672342964322f7ebb573cbccf4a94bb0a4",
+          "e01ec91ae6f1e6a358a075398f93a04631b17dcabffc32b802b7f08239fe3754"
+        ],
+        "SettlementClaimed": [
+          "c2853b1a2da6b3aa95951069f9291e7e7b136d230bc0b93cd43328f55821a614"
+        ]
+      },
+      "finalState": {
+        "lender": "0x7401c129EDfc26E68FE19309fE461eb3Db1058Eb",
+        "borrower": "0x8AcFe882ce401a7256A58Ca025A6EBb16EDCc39e",
+        "principal": 10000000,
+        "collateralRequired": 15000000,
+        "principalEscrowed": 0,
+        "collateralEscrowed": 0,
+        "lenderClaimable": 0,
+        "borrowerClaimable": 0,
+        "baseInterestBps": 500,
+        "currentInterestBps": 600,
+        "maturity": 1794492384,
+        "breachTier": 3,
+        "status": 4,
+        "principalClaimed": false
+      }
+    }
+  ]
+}

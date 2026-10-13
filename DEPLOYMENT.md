@@ -1,191 +1,97 @@
-# Covenant Watch Deployment Runbook
+# Covenant Watch deployment runbook
 
-Last verified: 2026-10-05.
+Last verified: 13 October 2026.
 
-## Current production
+## Current deployment
 
 | Component | Value |
 |---|---|
-| Network | GenLayer StudioNet |
-| Contract | `0x5aD6959559D0eF030a62C625b9071eBE655af74a` |
-| Contract deploy tx | `0x367cd6a76499da1ecf2024d0229595b62e199218d2b73bbf87a8c50aa6ae325a` |
+| GenLayer StudioNet adjudicator | `0xa49283a086fE5122Cf3967b6ADb50A50fA736905` |
+| GenLayer deploy tx | `0x37f1509f624da25dd0739b0d6999529d8bcd57b8adc06828a0c2cfa9ade41405` |
+| Base Sepolia escrow | `0x8a34e37A4A1Fe74848389F13033099c0Fe889472` |
+| Base deploy tx | `0xee049ce31c65e90f1f1a605f342ef796e21814cd1d6e7e4ab9fd424fc9e5a604` |
+| Base Sepolia USDC | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` |
 | Frontend | https://covenant-watch.vercel.app |
-| Vercel project | `covenant-watch` |
 | Backend | https://covenant-watch-api.fly.dev |
-| Fly app | `covenant-watch-api` |
 
-The deployment is `FINALIZED`; all five selected validators voted `AGREE` and
-the GenVM deployment execution returned successfully.
-No post-deployment contract calls have been submitted; user acceptance testing
-is intentionally pending from the production frontend.
-
-## 1. Verify source before deployment
+## Verify source
 
 ```bash
-gltest tests/direct/ -v
-cd backend && .venv/bin/pytest -q && cd ..
-cd frontend && npm run lint && npx tsc --noEmit && npm run build -- --webpack && cd ..
-git diff --check
+forge test -vv
+backend/.venv/bin/pytest -q backend/tests
+cd frontend && npm run lint && npx tsc --noEmit && npm run build -- --webpack
 ```
 
-Expected baseline: 38 contract tests and 17 backend tests pass. The webpack
-build currently emits non-fatal optional Reown/Wagmi connector-resolution
-warnings but must complete and emit every route.
+## Deploy Base Sepolia
 
-## 2. Deploy the Intelligent Contract
+```bash
+forge build
+forge create contracts/base/CovenantWatchEscrow.sol:CovenantWatchEscrow \
+  --rpc-url "$BASE_SEPOLIA_RPC_URL" --private-key "$DEPLOYER_PRIVATE_KEY" \
+  --broadcast --constructor-args \
+  0x036CbD53842c5426634e7929541eC2318f3dCF7e "$RELAYER_ADDRESS"
+```
 
-The commands below match the installed `genlayer` CLI:
+Record the address and transaction. Confirm `owner`, `relayer`, and `usdc`
+before wiring the application. The relayer should be a dedicated testnet wallet.
+
+## Deploy GenLayer
 
 ```bash
 genlayer network set studionet
-genlayer account list
 genlayer deploy --contract contracts/covenant_watch.py
-```
-
-Record both the transaction hash and new address. Wait for actual finality:
-
-```bash
-genlayer receipt --status FINALIZED <deploy-tx-hash>
-genlayer schema <contract-address>
-genlayer code <contract-address>
+genlayer receipt --status FINALIZED <transaction-hash>
 genlayer call <contract-address> get_loan_count
 ```
 
-The schema must expose 22 public methods: 11 writes and 11 views. The installed
-CLI does not expose payable call value on `genlayer write`, so use the included
-Node harness—not a value-less CLI write—to test escrow.
+Require a successful finalized receipt. This contract is adjudication-only:
+its schema must not expose payable loan, collateral, repayment, or claim calls.
 
-## 3. Run the real payable, LLM-backed lifecycle
+## Configure services
 
-`tests/integration/live_studionet.mjs` uses unlocked test accounts and
-`genlayer-js` to submit native values. It waits for `FINALIZED`, requires
-successful execution, dynamically resolves loan/covenant/check IDs, and can
-resume an existing loan without blindly duplicating writes.
-
-The evidence set that passed 3/3 on StudioNet was:
-
-- `https://en.wikipedia.org/wiki/Bitcoin`
-- `https://river.com/learn/terms/1/21-million/`
-- `https://www.fidelitydigitalassets.com/research-and-insights/understanding-bitcoin-and-ethereum-supply`
-
-Example:
-
-```bash
-CONTRACT_ADDRESS='<contract-address>' \
-SOURCE_URLS='https://en.wikipedia.org/wiki/Bitcoin,https://river.com/learn/terms/1/21-million/,https://www.fidelitydigitalassets.com/research-and-insights/understanding-bitcoin-and-ethereum-supply' \
-CONDITION_FIELD=max_bitcoin_supply \
-OPERATOR='==' \
-THRESHOLD=21000000 \
-COVENANT_DESCRIPTION='Independent publishers must corroborate Bitcoin maximum supply as 21,000,000.' \
-node tests/integration/live_studionet.mjs
-```
-
-If direct Node/Python TLS calls to StudioNet fail with
-`SSL/TLS_ALERT_BAD_RECORD_MAC`, start
-`tests/integration/rpc_curl_proxy.py` and set
-`GENLAYER_RPC_URL=http://127.0.0.1:4133`. Stop the local proxy afterward.
-
-Success must include a finalized `COMPLIANT` check, 2/3 or 3/3 publisher
-quorum, genuine validator agreement, terminal `REPAID`, and zero remaining
-claimable balances. The verified production run achieved 3/3 publisher
-corroboration on loan `0` with observed value `21000000.000000`.
-
-Avoid using cryptocurrency JSON API endpoints as evidence until the current
-GenVM renderer issue is resolved. One live attempt crashed in the GenVM host
-before validator selection (`INTERNAL_ERROR`, `NO_MAJORITY`, zero validators).
-Document pages completed successfully. Such a host crash is not a covenant
-verdict and must never be shown as success.
-
-## 4. Wire the address
-
-Keep these values identical:
-
-- backend local/production: `CONTRACT_ADDRESS`
-- frontend local/production: `NEXT_PUBLIC_CONTRACT_ADDRESS`
-- frontend public fallback in `frontend/src/lib/config.ts`
-- `.env.example`, `README.md`, `AUDIT.md`, and `memory.md`
-
-After a new contract deployment, update the files with normal reviewable edits
-and run the complete verification baseline again.
-
-## 5. Deploy backend
-
-Set the address first; this restarts the machine:
-
-```bash
-fly secrets set \
-  CONTRACT_ADDRESS='<contract-address>' \
-  GENLAYER_NETWORK=studionet \
-  -a covenant-watch-api
-```
-
-Deploy whenever backend source, requirements, Alembic migrations, Dockerfile,
-or `fly.toml` changed:
-
-```bash
-cd backend
-fly deploy -a covenant-watch-api
-```
-
-`fly.toml` runs `alembic upgrade head` before its rolling update. Verify:
-
-```bash
-curl https://covenant-watch-api.fly.dev/healthz
-fly status -a covenant-watch-api
-```
-
-Require `status: ok`, `database: ok`, `contract_configured: true`, indexer
-`idle`/`syncing`, a populated `last_success_at`, and `last_error: null`.
-
-## 6. Deploy frontend
-
-```bash
-cd frontend
-vercel --prod --yes \
-  --build-env NEXT_PUBLIC_CONTRACT_ADDRESS='<contract-address>' \
-  --env NEXT_PUBLIC_CONTRACT_ADDRESS='<contract-address>'
-```
-
-Production also uses:
+Backend secrets/configuration:
 
 ```text
-NEXT_PUBLIC_GENLAYER_NETWORK=studionet
-NEXT_PUBLIC_BACKEND_URL=https://covenant-watch-api.fly.dev
-NEXT_PUBLIC_GENLAYER_EXPLORER_URL=https://explorer-studio.genlayer.com/
-NEXT_PUBLIC_REOWN_PROJECT_ID=<your-public-Reown-project-id>
+CONTRACT_ADDRESS=<GenLayer address>
+GENLAYER_NETWORK=studionet
+BASE_SEPOLIA_RPC_URL=https://sepolia.base.org
+BASE_USDC_ADDRESS=0x036CbD53842c5426634e7929541eC2318f3dCF7e
+BASE_ESCROW_ADDRESS=<Base address>
+BASE_RELAYER_PRIVATE_KEY=<secret>
 ```
 
-Verify the deployment reaches `READY` and is aliased to
-`https://covenant-watch.vercel.app`.
+Frontend build variables:
 
-## 7. Post-deployment checks
+```text
+NEXT_PUBLIC_CONTRACT_ADDRESS=<GenLayer address>
+NEXT_PUBLIC_GENLAYER_NETWORK=studionet
+NEXT_PUBLIC_BASE_USDC_ADDRESS=0x036CbD53842c5426634e7929541eC2318f3dCF7e
+NEXT_PUBLIC_BASE_ESCROW_ADDRESS=<Base address>
+NEXT_PUBLIC_BACKEND_URL=https://covenant-watch-api.fly.dev
+```
 
-- Load the production frontend and inspect the settings page values.
-- Connect a real wallet and complete SIWE authentication.
-- Confirm every write displays submitted/pending status and does not update
-  application state at `ACCEPTED`; it must wait for `FINALIZED` plus successful
-  execution.
-- Confirm a finalized action immediately rereads contract state and disables a
-  one-shot button that is no longer valid.
-- Check maturity, grace, challenge, and cooldown countdowns against
-  `get_current_time`/contract view results.
-- Create a three-publisher covenant and confirm distinct-host validation.
-- Resolve transaction status and on-chain state before retrying any interrupted
-  write; use `RESUME_LOAN_ID` in the live harness where applicable.
-- Verify backend health and that its cache eventually reflects the new loan,
-  while direct chain state remains authoritative.
+Deploy backend with `fly deploy -a covenant-watch-api` and frontend with
+`vercel --prod --yes`. Verify `/healthz`, `/settings`, `/loans`, and
+`/milestone` after rollout.
 
-## 8. Rollback and incident handling
+## Live E2E evidence
 
-Contracts are immutable deployments. Rollback means restoring the prior
-address in Vercel/Fly and redeploying/restarting those services; it does not
-rewrite existing loans. Never point an existing UI at a contract whose schema
-does not match `frontend/src/lib/contract.ts`.
+The authorized live runner is `tests/e2e/base_live.py`. It requires the
+throwaway deployer key only through `DEPLOYER_PRIVATE_KEY`; never write the key
+to a file. `tests/e2e/report_live.py` reads confirmed event logs and regenerates
+`frontend/src/data/milestoneScenarios.json` without a key.
 
-For a GenVM error, inspect the exact transaction receipt. Distinguish a host
-`INTERNAL_ERROR`/`NO_MAJORITY` from an on-chain `INCONCLUSIVE` verdict and from
-a deterministic contract revert. Only a finalized successful receipt may drive
-the UI's success state.
+## Relay requirements
 
-See `AUDIT.md`, `memory.md`, `backend/README.md`, and `frontend/README.md` for
-the current security model and component details.
+Only relay a GenLayer check after it is finalized. Translate status as
+`Compliant=0`, `Breach=1`, `Inconclusive=2`, and use the covenant's immutable
+step-up/seizure parameters. Submit once with `applyDecision`; after the Base
+receipt confirms, record its transaction hash through
+`mark_decision_relayed`. A Base retry is safe because `(loanId, checkId)` is
+replay-protected.
+
+## Rollback
+
+Contracts are immutable. Rollback means restoring both prior addresses in the
+backend and frontend together. Never mix counters from unrelated Base and
+GenLayer deployments; loan IDs are paired by synchronized fresh deployments.

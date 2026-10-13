@@ -13,6 +13,7 @@ from app.models.covenant import Covenant
 from app.models.loan import Loan
 from app.schemas.domain import CheckOut, CovenantOut, LoanOut
 from app.workers.indexer import SyncAlreadyRunningError, run_sync_once
+from app.services.base_sepolia import get_base_loan
 
 router = APIRouter(prefix="/loans", tags=["loans"])
 limiter = Limiter(key_func=get_remote_address, storage_uri=get_settings().REDIS_URL)
@@ -83,3 +84,10 @@ def get_loan_checks(loan_id: int, db: DBSession = Depends(get_db)):
         .order_by(Check.triggered_at.desc())
         .all()
     )
+@router.get("/{loan_id}/base")
+def get_base_payment_state(loan_id: int):
+    """Live Base Sepolia USDC escrow state; never fabricated from cache."""
+    try:
+        return get_base_loan(loan_id)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc

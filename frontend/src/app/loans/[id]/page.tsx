@@ -7,27 +7,21 @@ import { Button, Card, ErrorState, LoadingState, Mono } from "@/components/ui";
 import { StatusBadge } from "@/components/StatusBadge";
 import { CollateralGauge } from "@/components/CollateralGauge";
 import { TxStatusPanel } from "@/components/TxStatusPanel";
-import { Countdown, useContractClock, useCountdown } from "@/components/Countdown";
+import { Countdown, useContractClock } from "@/components/Countdown";
 import { useWallet } from "@/context/WalletContext";
 import { useSigner } from "@/lib/useSigner";
 import {
-  lockCollateral,
-  claimPrincipal,
-  repayLoan,
-  cancelLoan,
-  settleMaturedLoan,
-  claimSettlement,
+  activateBaseLoan,
   getLoan,
   getLoanCovenants,
   getCheckHistory,
-  canClaimPrincipal,
   LoanDict,
   CovenantDict,
   CheckDict,
-  MATURITY_GRACE_SECONDS,
 } from "@/lib/contract";
-import { getLoanCached, getLoanCovenantsCached, getLoanChecksCached } from "@/lib/api";
-import { formatGen, formatBps, formatTs, shortAddr } from "@/lib/format";
+import { getLoanCached, getLoanCovenantsCached, getLoanChecksCached, getBaseLoan } from "@/lib/api";
+import { formatUsdc, formatBps, formatTs, shortAddr } from "@/lib/format";
+import { stakeBaseCollateral, claimBasePrincipal, claimBaseSettlement, repayBaseLoan } from "@/lib/base";
 import { runTrackedWrite, TxSnapshot } from "@/lib/tx";
 
 function timestampSeconds(value: unknown): number {
@@ -76,22 +70,23 @@ export default function LoanDetailPage() {
           getCheckHistory(loanId),
         ]);
       }
-      const drawReady = Boolean(await canClaimPrincipal(loanId));
-      setPrincipalClaimReady(drawReady);
+      const base = await getBaseLoan(loanId);
+      const statuses = ["CREATED", "ACTIVE", "BREACH_TIER1", "BREACH_TIER2", "DEFAULTED", "REPAID", "CANCELLED", "TIMEOUT_RECLAIMED"];
+      setPrincipalClaimReady([1, 2, 3].includes(Number(base.status)));
       setLoan({
         id: l.chain_loan_id ?? l.id,
         lender: l.lender_address ?? l.lender,
         borrower: l.borrower_address ?? l.borrower,
-        principal_wei: BigInt(l.principal_wei),
-        collateral_wei: BigInt(l.collateral_wei),
-        collateral_deposited: BigInt(l.collateral_deposited),
-        current_interest_bps: l.interest_bps ?? l.current_interest_bps,
+        principal_wei: BigInt(base.principal),
+        collateral_wei: BigInt(base.collateral_required),
+        collateral_deposited: BigInt(base.collateral_escrowed),
+        current_interest_bps: base.current_interest_bps,
         maturity_ts: l.maturity_ts,
-        status: l.status,
-        breach_tier: l.status === "BREACH_TIER2" ? 2 : l.status === "BREACH_TIER1" ? 1 : 0,
-        principal_claimed: l.principal_claimed ?? false,
-        claimable_lender_wei: BigInt(l.claimable_lender_wei),
-        claimable_borrower_wei: BigInt(l.claimable_borrower_wei),
+        status: statuses[Number(base.status)] ?? l.status,
+        breach_tier: Number(base.breach_tier),
+        principal_claimed: Boolean(base.principal_claimed),
+        claimable_lender_wei: BigInt(base.lender_claimable),
+        claimable_borrower_wei: BigInt(base.borrower_claimable),
         challenge_window_seconds: l.challenge_window_seconds ?? 0,
       } as unknown as LoanDict);
       // Cache records use database IDs and compact nested fields; contract
@@ -153,8 +148,6 @@ export default function LoanDetailPage() {
   const isLender = sessionAddress && loan && sessionAddress.toLowerCase() === loan.lender.toLowerCase();
   const isBorrower = sessionAddress && loan && sessionAddress.toLowerCase() === loan.borrower.toLowerCase();
   const contractNow = useContractClock();
-  const timeoutEligibleAt = loan ? loan.maturity_ts + MATURITY_GRACE_SECONDS : 0;
-  const timeoutRemaining = useCountdown(timeoutEligibleAt, contractNow);
 
   async function act(label: string, fn: () => Promise<any>) {
     if (!signer) return;
@@ -165,6 +158,21 @@ export default function LoanDetailPage() {
       // Finality was just observed by the RPC. Bypass the eventually
       // consistent backend cache so the screen changes immediately.
       await reload(true);
+    }
+    setActiveAction(null);
+  }
+
+  async function actBase(label: string, fn: () => Promise<`0x${string}`>) {
+    if (!signer) return;
+    setActiveAction(label);
+    setSnap({ phase: "submitted" });
+    try {
+      const hash = await fn();
+      setSnap({ phase: "finalized", hash, statusName: "CONFIRMED_ON_BASE_SEPOLIA" });
+      setCompletedActions((current) => new Set(current).add(label));
+      await reload(true);
+    } catch (err: any) {
+      setSnap({ phase: "failed", error: err?.message || String(err) });
     }
     setActiveAction(null);
   }
@@ -181,7 +189,7 @@ export default function LoanDetailPage() {
       <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="font-onchain text-xs text-on-surface-variant">Loan #{loan.id}</p>
-          <h1 className="mt-1 text-2xl font-semibold text-on-surface">{formatGen(loan.principal_wei)} principal</h1>
+          <h1 className="mt-1 text-2xl font-semibold text-on-surface">{formatUsdc(loan.principal_wei)} principal</h1>
         </div>
         <StatusBadge status={loan.status} />
       </div>
@@ -227,14 +235,18 @@ export default function LoanDetailPage() {
         <h2 className="mb-3 text-sm font-semibold text-on-surface">Actions</h2>
         <div className="flex flex-wrap gap-2">
           {isBorrower && loan.status === "CREATED" && (
-            <Button onClick={() => act("lock", () => lockCollateral(signer!, loan.id, BigInt(loan.collateral_wei)))} disabled={actionDisabled("lock")}>
-              {completedActions.has("lock") ? "Collateral locked" : `Lock collateral (${formatGen(loan.collateral_wei)})`}
+            <Button onClick={() => act("lock", async () => {
+              const amount = formatUsdc(loan.collateral_wei).replace(" USDC", "");
+              const baseHash = await stakeBaseCollateral(signer!, loan.id, amount);
+              return activateBaseLoan(signer!, loan.id, baseHash);
+            })} disabled={actionDisabled("lock")}>
+              {completedActions.has("lock") ? "Collateral staked" : `Stake collateral (${formatUsdc(loan.collateral_wei)})`}
             </Button>
           )}
           {isBorrower && ["ACTIVE", "BREACH_TIER1", "BREACH_TIER2"].includes(loan.status) && !loan.principal_claimed && (
             <div className="flex flex-col gap-1">
               <Button
-                onClick={() => act("claim-principal", () => claimPrincipal(signer!, loan.id))}
+                onClick={() => actBase("claim-principal", () => claimBasePrincipal(signer!, loan.id))}
                 disabled={actionDisabled("claim-principal") || !principalClaimReady}
               >
                 {completedActions.has("claim-principal")
@@ -250,17 +262,12 @@ export default function LoanDetailPage() {
               )}
             </div>
           )}
-          {isLender && loan.status === "CREATED" && (
-            <Button variant="secondary" onClick={() => act("cancel", () => cancelLoan(signer!, loan.id))} disabled={actionDisabled("cancel")}>
-              {completedActions.has("cancel") ? "Loan cancelled" : "Cancel loan (refund)"}
-            </Button>
-          )}
           {isBorrower && loan.principal_claimed && ["ACTIVE", "BREACH_TIER1", "BREACH_TIER2"].includes(loan.status) && (
             <Button
               variant="secondary"
               onClick={() =>
-                act("repay", () =>
-                  repayLoan(
+                actBase("repay", () =>
+                  repayBaseLoan(
                     signer!,
                     loan.id,
                     (BigInt(loan.principal_wei) * BigInt(10000 + loan.current_interest_bps)) / 10000n
@@ -272,25 +279,10 @@ export default function LoanDetailPage() {
               {completedActions.has("repay") ? "Loan repaid" : "Repay loan (principal + interest)"}
             </Button>
           )}
-          {["ACTIVE", "BREACH_TIER1", "BREACH_TIER2"].includes(loan.status) && (
-            <Button
-              variant="secondary"
-              onClick={() => act("settle-maturity", () => settleMaturedLoan(signer!, loan.id))}
-              disabled={actionDisabled("settle-maturity") || timeoutRemaining > 0}
-            >
-              {completedActions.has("settle-maturity")
-                ? "Maturity settled"
-                : timeoutRemaining > 0
-                  ? <>Maturity settlement in <Countdown targetTs={timeoutEligibleAt} nowTs={contractNow} /></>
-                  : loan.principal_claimed
-                    ? "Settle overdue loan (default)"
-                    : "Unwind undrawn matured loan"}
-            </Button>
-          )}
           {(isLender || isBorrower) && (loan.claimable_lender_wei > 0 || loan.claimable_borrower_wei > 0) && (
-            <Button onClick={() => act("claim-settlement", () => claimSettlement(signer!, loan.id))} disabled={actionDisabled("claim-settlement")}>
+            <Button onClick={() => actBase("claim-settlement", () => claimBaseSettlement(signer!, loan.id))} disabled={actionDisabled("claim-settlement")}>
               {completedActions.has("claim-settlement") ? "Settlement claimed" : <>Claim settlement (
-              {formatGen(isLender ? loan.claimable_lender_wei : loan.claimable_borrower_wei)})
+              {formatUsdc(isLender ? loan.claimable_lender_wei : loan.claimable_borrower_wei)})
               </>}
             </Button>
           )}

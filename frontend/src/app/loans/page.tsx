@@ -6,7 +6,7 @@ import { Button, Card, EmptyState, ErrorState, LoadingState } from "@/components
 import { StatusBadge } from "@/components/StatusBadge";
 import { CollateralGauge } from "@/components/CollateralGauge";
 import { Countdown, useContractClock } from "@/components/Countdown";
-import { formatGen, formatBps, formatTs, shortAddr } from "@/lib/format";
+import { formatUsdc, formatBps, formatTs, shortAddr } from "@/lib/format";
 import { useWallet } from "@/context/WalletContext";
 import Link from "next/link";
 
@@ -104,7 +104,7 @@ export default function LoansPage() {
         <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
           <Card className="!p-3">
             <p className="font-onchain text-[10px] uppercase text-on-surface-variant">Total escrowed</p>
-            <p className="mt-1 text-lg font-semibold text-on-surface">{formatGen(counts.escrowed)}</p>
+            <p className="mt-1 text-lg font-semibold text-on-surface">{formatUsdc(counts.escrowed)}</p>
           </Card>
           <Card className="!p-3">
             <p className="font-onchain text-[10px] uppercase text-on-surface-variant">Loans</p>
@@ -154,7 +154,7 @@ export default function LoansPage() {
                 <div className="flex items-start justify-between">
                   <div>
                     <p className="font-onchain text-xs text-on-surface-variant">Loan #{loan.chain_loan_id}</p>
-                    <p className="mt-1 text-lg font-semibold text-on-surface">{formatGen(loan.principal_wei)}</p>
+                    <p className="mt-1 text-lg font-semibold text-on-surface">{formatUsdc(loan.principal_wei)}</p>
                   </div>
                   <StatusBadge status={loan.status} />
                 </div>
