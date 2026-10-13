@@ -56,6 +56,6 @@ backend/.venv/bin/pytest -q backend/tests
 cd frontend && npm run lint && npx tsc --noEmit && npm run build -- --webpack
 ```
 
-Live evidence is checked in at `frontend/src/data/milestoneScenarios.json` and rendered at `/milestone`.
+Live evidence is checked in at `frontend/src/data/milestoneScenarios.json` and rendered under `/loans`.
 
 Copy `backend/.env.example` and `frontend/.env.example` for configuration. Keep `BASE_RELAYER_PRIVATE_KEY` only in backend secret storage. Full production steps are in [DEPLOYMENT.md](./DEPLOYMENT.md).

@@ -33,7 +33,7 @@ Native GEN escrow and all payout functions were removed from GenLayer. `create_l
 
 Backend configuration now includes Base RPC, escrow, USDC, and relayer settings. `base_sepolia.py` supplies authoritative Base reads and the sole decision-relay write; `GET /loans/{id}/base` exposes live payment state.
 
-The frontend now originates via USDC approval + Base escrow creation before registering covenant terms on GenLayer. Collateral, draw, repayment, and settlement use Base; checks and challenges use GenLayer. Monetary labels use six-decimal USDC. `/milestone` renders checked-in live event evidence with BaseScan links.
+The frontend now originates via USDC approval + Base escrow creation before registering covenant terms on GenLayer. Collateral, draw, repayment, and settlement use Base; checks and challenges use GenLayer. Monetary labels use six-decimal USDC. `/loans` renders the checked-in live test loans with BaseScan links.
 
 ## Three live end-to-end scenarios
 

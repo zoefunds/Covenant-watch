@@ -8,7 +8,10 @@ import { CollateralGauge } from "@/components/CollateralGauge";
 import { Countdown, useContractClock } from "@/components/Countdown";
 import { formatUsdc, formatBps, formatTs, shortAddr } from "@/lib/format";
 import { useWallet } from "@/context/WalletContext";
+import milestoneData from "@/data/milestoneScenarios.json";
 import Link from "next/link";
+
+const baseStatusNames = ["CREATED", "ACTIVE", "BREACH_TIER1", "BREACH_TIER2", "DEFAULTED", "REPAID", "CANCELLED", "TIMEOUT_RECLAIMED"];
 
 export default function LoansPage() {
   const contractNow = useContractClock();
@@ -182,6 +185,45 @@ export default function LoansPage() {
           ))}
         </div>
       )}
+
+      <section className="mt-12 border-t border-outline-variant pt-8">
+        <p className="font-onchain text-xs uppercase tracking-widest text-primary-container">Verified on Base Sepolia</p>
+        <h2 className="mt-2 text-2xl font-semibold text-on-surface">Live E2E test loans</h2>
+        <p className="mt-2 max-w-3xl text-sm text-on-surface-variant">
+          These three loans use real USDC escrow transactions—not placeholder data. Open a loan or inspect each
+          confirmed transaction on BaseScan.
+        </p>
+        <div className="mt-5 grid gap-4 lg:grid-cols-3">
+          {milestoneData.scenarios.map((item) => (
+            <Card key={item.scenario} className="h-full">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="font-onchain text-xs text-primary-container">Test {item.scenario} · Loan #{item.loanId}</p>
+                  <h3 className="mt-2 text-lg font-semibold text-on-surface">{item.title}</h3>
+                </div>
+                <StatusBadge status={baseStatusNames[item.finalState.status]} />
+              </div>
+              <p className="mt-2 text-sm text-on-surface-variant">{item.summary}</p>
+              <dl className="mt-4 space-y-2 text-xs text-on-surface-variant">
+                <div className="flex justify-between gap-3"><dt>Principal</dt><dd className="text-on-surface">{formatUsdc(item.finalState.principal)}</dd></div>
+                <div className="flex justify-between gap-3"><dt>Collateral remaining</dt><dd className="text-on-surface">{formatUsdc(item.finalState.collateralEscrowed)}</dd></div>
+                <div className="flex justify-between gap-3"><dt>Breach tier</dt><dd className="text-on-surface">{item.finalState.breachTier}</dd></div>
+                <div className="flex justify-between gap-3"><dt>Current interest</dt><dd className="text-on-surface">{(item.finalState.currentInterestBps / 100).toFixed(2)}%</dd></div>
+              </dl>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Link href={`/loans/${item.loanId}`} className="rounded bg-primary-container px-2 py-1 font-onchain text-[10px] text-on-primary-container">
+                  Open loan
+                </Link>
+                {Object.entries(item.transactions).flatMap(([event, hashes]) => (hashes as string[]).map((hash, i) => (
+                  <a key={`${event}-${hash}`} href={`https://sepolia.basescan.org/tx/${hash.startsWith("0x") ? hash : `0x${hash}`}`} target="_blank" rel="noreferrer" className="rounded border border-outline/30 px-2 py-1 font-onchain text-[10px] text-primary-container hover:border-primary-container">
+                    {event}{hashes.length > 1 ? ` ${i + 1}` : ""}
+                  </a>
+                )))}
+              </div>
+            </Card>
+          ))}
+        </div>
+      </section>
     </div>
   );
 }

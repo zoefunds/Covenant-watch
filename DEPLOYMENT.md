@@ -75,7 +75,7 @@ NEXT_PUBLIC_BACKEND_URL=https://covenant-watch-api.fly.dev
 
 Deploy backend with `fly deploy -a covenant-watch-api` and frontend with
 `vercel --prod --yes`. Verify `/healthz`, `/settings`, `/loans`, and
-`/milestone` after rollout.
+`/loans` after rollout.
 
 ## Live E2E evidence
 
