@@ -89,7 +89,10 @@ export default function NewLoanPage() {
     setFormError(null);
     // Borrower is a counterparty distinct from the connected wallet, so this
     // is a realistic-format example address, not a fabricated live one.
-    setBorrower("0x8f3a2Cc1B4e6D9057F1a1b2C3d4E5f60718293A4");
+    // Lowercase is intentionally used: mixed-case Ethereum addresses are
+    // interpreted as EIP-55 checksummed and rejected when the casing is only
+    // decorative. This remains the exact same 20-byte address.
+    setBorrower("0x8f3a2cc1b4e6d9057f1a1b2c3d4e5f60718293a4");
     setPrincipalUsdc("100");
     setCollateralUsdc("150");
     setInterestBps(500);
@@ -175,6 +178,10 @@ export default function NewLoanPage() {
       }
     }
 
+    // Normalize valid hex input before both encoders see it. A user may paste
+    // arbitrary mixed casing that is not an EIP-55 checksum; viem correctly
+    // rejects that even though the form's length/hex validation passes.
+    const normalizedBorrower = borrower.toLowerCase();
     const cleanCovenants: CovenantInput[] = covenants.map((c) => ({
       source_type: c.source_type,
       source_ref: c.source_ref.trim(),
@@ -191,7 +198,7 @@ export default function NewLoanPage() {
       // Funds move first and only on Base Sepolia. The wallet shows two real
       // confirmations: USDC approval, then createLoan/transferFrom into escrow.
       const baseLoan = await createBaseLoan(
-        signer, borrower, principalUsdc, collateralUsdc, interestBps, maturityTs, cleanCovenants.length,
+        signer, normalizedBorrower, principalUsdc, collateralUsdc, interestBps, maturityTs, cleanCovenants.length,
         (step, hash) => {
           const labels = {
             switching_base: "Switching wallet to Base Sepolia…",
@@ -205,7 +212,7 @@ export default function NewLoanPage() {
       if (baseLoan.loanId < 0) throw new Error("Base Sepolia did not return a valid loan id");
       setFlowStep("Switching wallet to GenLayer and requesting the adjudication-record transaction…");
       const result = await runTrackedWrite(
-        () => createLoan(signer, borrower, usdcToUnits(principalUsdc), usdcToUnits(collateralUsdc), interestBps, maturityTs, cleanCovenants, challengeWindow),
+        () => createLoan(signer, normalizedBorrower, usdcToUnits(principalUsdc), usdcToUnits(collateralUsdc), interestBps, maturityTs, cleanCovenants, challengeWindow),
         setSnap
       );
 
