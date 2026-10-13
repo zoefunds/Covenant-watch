@@ -40,7 +40,14 @@ def get_base_loan(loan_id: int) -> dict:
     w3 = _web3()
     values = w3.eth.contract(address=Web3.to_checksum_address(settings.BASE_ESCROW_ADDRESS), abi=ESCROW_ABI).functions.loans(loan_id).call()
     names = ["lender","borrower","principal","collateral_required","principal_escrowed","collateral_escrowed","lender_claimable","borrower_claimable","base_interest_bps","current_interest_bps","maturity","drawdown_deadline","settlement_grace","breach_tier","covenant_count","compliant_covenants","status","principal_claimed","commitment"]
-    return dict(zip(names, values))
+    loan = dict(zip(names, values))
+    # web3 returns bytes32 values as HexBytes. FastAPI's generic encoder treats
+    # bytes as UTF-8 text, which fails for arbitrary commitment hashes and
+    # turns an otherwise successful contract read into a 500 response.
+    commitment = loan.get("commitment")
+    if isinstance(commitment, (bytes, bytearray)):
+        loan["commitment"] = Web3.to_hex(commitment)
+    return loan
 
 def relay_finalized_decision(loan_id: int, check_id: int, covenant_index: int, decision: int, loan_commitment: str, covenant_commitment: str) -> str:
     settings = get_settings()
