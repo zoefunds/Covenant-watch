@@ -75,6 +75,6 @@ The optional live runner remains in `tests/e2e/cross_chain_live.py`, but its his
 
 ## Source comparison
 
-The milestone starts at commit `59098877f02507ee4b57f79a1edfb01aa667f792`. The current comparison is:
+The last awarded baseline is commit `e054b6fc629be61f365d6aa83601a3dabc8033ca`. The current comparison is:
 
-https://github.com/zoefunds/Covenant-watch/compare/59098877f02507ee4b57f79a1edfb01aa667f792...main
+https://github.com/zoefunds/Covenant-watch/compare/e054b6fc629be61f365d6aa83601a3dabc8033ca...main
