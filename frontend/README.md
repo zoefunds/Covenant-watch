@@ -19,9 +19,13 @@ radii, a `1px solid #00F0FF` focus ring.
 ## Wallet connection: Reown (WalletConnect) AppKit
 
 Wallet connection uses `@reown/appkit` + `@reown/appkit-adapter-wagmi`
-(backed by `wagmi`/`viem`), configured in `src/lib/appkit.ts` against a
-`CaipNetwork` built directly from `genlayer-js`'s own `chains.studionet`
-definition — never a separately-invented chain config.
+(backed by `wagmi`/`viem`), configured in `src/lib/appkit.ts` for both
+GenLayer StudioNet and Base Sepolia. Every write re-reads the wallet's active
+chain, switches (or adds) the required network, and verifies the result before
+requesting a signature. GenLayer writes additionally call the SDK's
+`client.connect("studionet")` before submission. Loan origination exposes the
+USDC approval, Base escrow, and GenLayer registration as separate live steps
+with explorer links instead of hiding the two-chain flow behind one button.
 
 **Connecting a wallet is not authentication.** `src/context/WalletContext.tsx`
 keeps the AppKit-connected `address` and the backend-authenticated

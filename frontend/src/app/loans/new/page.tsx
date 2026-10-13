@@ -10,7 +10,7 @@ import { useSigner } from "@/lib/useSigner";
 import { previewSource, syncLoans } from "@/lib/api";
 import { runTrackedWrite, TxSnapshot } from "@/lib/tx";
 import { createLoan, CovenantInput, VAGUE_CONDITION_FRAGMENTS, CHALLENGE_WINDOW_BOUNDS, MAX_COVENANTS_PER_LOAN } from "@/lib/contract";
-import { CONTRACT_ADDRESS } from "@/lib/config";
+import { BASE_EXPLORER_URL, CONTRACT_ADDRESS } from "@/lib/config";
 import { usdcToUnits, formatDuration, formatBps } from "@/lib/format";
 import { createBaseLoan } from "@/lib/base";
 
@@ -78,6 +78,8 @@ export default function NewLoanPage() {
   const [covenants, setCovenants] = useState<DraftCovenant[]>([{ ...EMPTY_COVENANT }]);
   const [formError, setFormError] = useState<string | null>(null);
   const [snap, setSnap] = useState<TxSnapshot>({ phase: "idle" });
+  const [flowStep, setFlowStep] = useState<string | null>(null);
+  const [baseHashes, setBaseHashes] = useState<{ approval?: string; escrow?: string }>({});
 
   function updateCovenant(i: number, patch: Partial<DraftCovenant>) {
     setCovenants((prev) => prev.map((c, idx) => (idx === i ? { ...c, ...patch } : c)));
@@ -128,6 +130,8 @@ export default function NewLoanPage() {
 
   async function handleSubmit() {
     setFormError(null);
+    setFlowStep(null);
+    setBaseHashes({});
     if (!signer) {
       setFormError("Connect and sign in with a wallet first.");
       return;
@@ -183,32 +187,43 @@ export default function NewLoanPage() {
       tier2_seizure_bps: c.tier2_seizure_bps,
     }));
 
-    // Funds move first and only on Base Sepolia. GenLayer receives the same
-    // terms afterward and is used exclusively for covenant adjudication.
-    const baseLoan = await createBaseLoan(signer, borrower, principalUsdc, collateralUsdc, interestBps, maturityTs, cleanCovenants.length);
-    if (baseLoan.loanId < 0) throw new Error("Base Sepolia did not return a valid loan id");
-    const result = await runTrackedWrite(
-      () =>
-        createLoan(
-          signer,
-          borrower,
-          usdcToUnits(principalUsdc),
-          usdcToUnits(collateralUsdc),
-          interestBps,
-          maturityTs,
-          cleanCovenants,
-          challengeWindow
-        ),
-      setSnap
-    );
+    try {
+      // Funds move first and only on Base Sepolia. The wallet shows two real
+      // confirmations: USDC approval, then createLoan/transferFrom into escrow.
+      const baseLoan = await createBaseLoan(
+        signer, borrower, principalUsdc, collateralUsdc, interestBps, maturityTs, cleanCovenants.length,
+        (step, hash) => {
+          const labels = {
+            switching_base: "Switching wallet to Base Sepolia…",
+            approving_usdc: hash ? "USDC approval confirmed on Base Sepolia." : "Confirm USDC approval in your wallet…",
+            escrowing_principal: hash ? "Principal escrow confirmed on Base Sepolia." : "Confirm the principal escrow transaction in your wallet…",
+          };
+          setFlowStep(labels[step]);
+          if (hash) setBaseHashes((current) => ({ ...current, [step === "approving_usdc" ? "approval" : "escrow"]: hash }));
+        }
+      );
+      if (baseLoan.loanId < 0) throw new Error("Base Sepolia did not return a valid loan id");
+      setFlowStep("Switching wallet to GenLayer and requesting the adjudication-record transaction…");
+      const result = await runTrackedWrite(
+        () => createLoan(signer, borrower, usdcToUnits(principalUsdc), usdcToUnits(collateralUsdc), interestBps, maturityTs, cleanCovenants, challengeWindow),
+        setSnap
+      );
 
-    if (result.phase === "finalized") {
-      try {
-        await syncLoans();
-      } catch {
-        // The normal backend poll remains the fallback.
+      if (result.phase === "finalized") {
+        setFlowStep("Loan exists on both Base Sepolia and GenLayer.");
+        try {
+          await syncLoans();
+        } catch {
+          // The normal backend poll remains the fallback.
+        }
+        router.push("/loans");
+      } else {
+        setFormError("Base escrow succeeded, but the GenLayer transaction did not finalize. Do not repeat the Base escrow; use the transaction error below.");
       }
-      router.push("/loans");
+    } catch (err: any) {
+      setSnap((current) => current.phase === "idle" ? { phase: "failed", error: err?.message || String(err) } : current);
+      setFormError(err?.message || "The cross-chain transaction flow failed.");
+      setFlowStep(null);
     }
   }
 
@@ -432,6 +447,15 @@ export default function NewLoanPage() {
         </Card>
 
         {formError && <ErrorState title="Fix the form" body={formError} />}
+        {flowStep && (
+          <Card>
+            <p className="text-sm text-on-surface">{flowStep}</p>
+            <div className="mt-2 flex flex-wrap gap-3 text-xs">
+              {baseHashes.approval && <a className="text-primary-container underline" target="_blank" rel="noreferrer" href={`${BASE_EXPLORER_URL}/tx/${baseHashes.approval}`}>View USDC approval</a>}
+              {baseHashes.escrow && <a className="text-primary-container underline" target="_blank" rel="noreferrer" href={`${BASE_EXPLORER_URL}/tx/${baseHashes.escrow}`}>View principal escrow</a>}
+            </div>
+          </Card>
+        )}
         <TxStatusPanel snap={snap} />
 
         <Button onClick={handleSubmit} disabled={!signer || snap.phase === "submitted" || snap.phase === "pending" || snap.phase === "finalized"}>

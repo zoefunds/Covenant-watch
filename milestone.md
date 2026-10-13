@@ -56,6 +56,13 @@ The matching Foundry suite passes 3/3. Backend tests pass 17/17, the Solidity bu
 
 ## Verification
 
+The production wallet flow supports both networks in one Reown session and
+automatically switches Base Sepolia → GenLayer StudioNet during origination.
+It verifies the wallet's actual chain after each switch and presents the USDC
+approval, principal escrow, and GenLayer registration as distinct transaction
+steps. The borrower collateral action performs the inverse Base → GenLayer
+handoff after the Base staking receipt confirms.
+
 ```bash
 forge test -vv
 backend/.venv/bin/pytest -q backend/tests

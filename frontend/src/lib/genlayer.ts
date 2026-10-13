@@ -49,4 +49,37 @@ export function getWalletClient(provider: any, address?: string): GenLayerClient
   return createClient({ chain, provider, ...(address ? { account: address as `0x${string}` } : {}) });
 }
 
+async function currentChain(provider: any) {
+  return String(await provider.request({ method: "eth_chainId" })).toLowerCase();
+}
+
+/** Switches the connected wallet to the configured GenLayer network and
+ * verifies the result. Some wallets silently ignore the first switch request,
+ * so this deliberately follows the proven Meme Olympics retry/add pattern. */
+export async function ensureGenLayerNetwork(provider: any): Promise<void> {
+  const chain = resolveChain();
+  const chainId = `0x${Number(chain.id).toString(16)}`.toLowerCase();
+  if ((await currentChain(provider)) === chainId) return;
+  try {
+    await provider.request({ method: "wallet_switchEthereumChain", params: [{ chainId }] });
+  } catch {
+    // Verify the wallet state below, independent of vendor-specific errors.
+  }
+  if ((await currentChain(provider)) === chainId) return;
+  await provider.request({
+    method: "wallet_addEthereumChain",
+    params: [{
+      chainId,
+      chainName: chain.name,
+      nativeCurrency: chain.nativeCurrency,
+      rpcUrls: chain.rpcUrls.default.http,
+      blockExplorerUrls: chain.blockExplorers?.default ? [chain.blockExplorers.default.url] : undefined,
+    }],
+  });
+  await provider.request({ method: "wallet_switchEthereumChain", params: [{ chainId }] });
+  if ((await currentChain(provider)) !== chainId) {
+    throw new Error(`Please switch your wallet to ${chain.name} to continue.`);
+  }
+}
+
 export { CONTRACT_ADDRESS };

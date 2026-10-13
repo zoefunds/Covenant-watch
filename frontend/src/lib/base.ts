@@ -18,30 +18,63 @@ const escrowAbi = [
 ] as const;
 const erc20Abi = [{ type: "function", name: "approve", stateMutability: "nonpayable", inputs: [{ name: "spender", type: "address" }, { name: "amount", type: "uint256" }], outputs: [{ type: "bool" }] }] as const;
 
-async function ensureBase(provider: any) {
-  const chain = await provider.request({ method: "eth_chainId" });
-  if (String(chain).toLowerCase() === "0x14a34") return;
-  try { await provider.request({ method: "wallet_switchEthereumChain", params: [{ chainId: "0x14a34" }] }); }
-  catch {
-    await provider.request({ method: "wallet_addEthereumChain", params: [{ chainId: "0x14a34", chainName: "Base Sepolia", nativeCurrency: { name: "ETH", symbol: "ETH", decimals: 18 }, rpcUrls: ["https://sepolia.base.org"], blockExplorerUrls: ["https://sepolia.basescan.org"] }] });
+const BASE_SEPOLIA_CHAIN_ID = "0x14a34";
+
+async function currentChain(provider: any) {
+  return String(await provider.request({ method: "eth_chainId" })).toLowerCase();
+}
+
+export async function ensureBase(provider: any) {
+  if ((await currentChain(provider)) === BASE_SEPOLIA_CHAIN_ID) return;
+  try {
+    await provider.request({ method: "wallet_switchEthereumChain", params: [{ chainId: BASE_SEPOLIA_CHAIN_ID }] });
+  } catch {
+    // Wallets disagree on the error code for an unknown chain. Verify the
+    // actual selected chain below instead of depending on that error shape.
+  }
+  if ((await currentChain(provider)) === BASE_SEPOLIA_CHAIN_ID) return;
+  await provider.request({ method: "wallet_addEthereumChain", params: [{ chainId: BASE_SEPOLIA_CHAIN_ID, chainName: "Base Sepolia", nativeCurrency: { name: "Sepolia Ether", symbol: "ETH", decimals: 18 }, rpcUrls: ["https://sepolia.base.org"], blockExplorerUrls: ["https://sepolia.basescan.org"] }] });
+  await provider.request({ method: "wallet_switchEthereumChain", params: [{ chainId: BASE_SEPOLIA_CHAIN_ID }] });
+  if ((await currentChain(provider)) !== BASE_SEPOLIA_CHAIN_ID) {
+    throw new Error("Please switch your wallet to Base Sepolia to continue.");
   }
 }
 
 async function send(signer: Signer, to: `0x${string}`, data: `0x${string}`) {
   await ensureBase(signer.provider);
+  const accounts = await signer.provider.request({ method: "eth_accounts" }) as string[];
+  const active = accounts?.[0];
+  if (!active || active.toLowerCase() !== signer.address.toLowerCase()) {
+    throw new Error("The active wallet account changed. Reconnect the wallet and try again.");
+  }
   const hash = await signer.provider.request({ method: "eth_sendTransaction", params: [{ from: signer.address, to, data }] }) as `0x${string}`;
   const client = createPublicClient({ chain: baseSepolia, transport: http() });
   await client.waitForTransactionReceipt({ hash, confirmations: 1 });
   return hash;
 }
 
-export async function createBaseLoan(signer: Signer, borrower: string, principalUsdc: string, collateralUsdc: string, interestBps: number, maturity: number, requiredCompliantChecks: number) {
+export async function createBaseLoan(
+  signer: Signer,
+  borrower: string,
+  principalUsdc: string,
+  collateralUsdc: string,
+  interestBps: number,
+  maturity: number,
+  requiredCompliantChecks: number,
+  onStep?: (step: "switching_base" | "approving_usdc" | "escrowing_principal", hash?: `0x${string}`) => void,
+) {
   const client = createPublicClient({ chain: baseSepolia, transport: http() });
   const loanId = await client.readContract({ address: BASE_ESCROW_ADDRESS, abi: escrowAbi, functionName: "loanCount" });
   const principal = parseUnits(principalUsdc, 6);
-  await send(signer, BASE_USDC_ADDRESS, encodeFunctionData({ abi: erc20Abi, functionName: "approve", args: [BASE_ESCROW_ADDRESS, principal] }));
+  onStep?.("switching_base");
+  await ensureBase(signer.provider);
+  onStep?.("approving_usdc");
+  const approvalHash = await send(signer, BASE_USDC_ADDRESS, encodeFunctionData({ abi: erc20Abi, functionName: "approve", args: [BASE_ESCROW_ADDRESS, principal] }));
+  onStep?.("approving_usdc", approvalHash);
+  onStep?.("escrowing_principal");
   const hash = await send(signer, BASE_ESCROW_ADDRESS, encodeFunctionData({ abi: escrowAbi, functionName: "createLoan", args: [borrower as `0x${string}`, principal, parseUnits(collateralUsdc, 6), interestBps, BigInt(maturity), requiredCompliantChecks] }));
-  return { loanId: Number(loanId), hash };
+  onStep?.("escrowing_principal", hash);
+  return { loanId: Number(loanId), approvalHash, hash };
 }
 
 export async function stakeBaseCollateral(signer: Signer, loanId: number, collateralUsdc: string) {

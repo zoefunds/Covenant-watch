@@ -10,6 +10,7 @@ import { createAppKit } from "@reown/appkit/react";
 import { WagmiAdapter } from "@reown/appkit-adapter-wagmi";
 import { defineChain } from "@reown/appkit/networks";
 import { chains as genlayerChains } from "genlayer-js";
+import { baseSepolia } from "viem/chains";
 import { REOWN_PROJECT_ID, GENLAYER_NETWORK } from "./config";
 
 const studio = (genlayerChains as Record<string, any>)[GENLAYER_NETWORK];
@@ -27,9 +28,20 @@ export const genlayerCaipNetwork = defineChain({
   testnet: true,
 });
 
+export const baseSepoliaCaipNetwork = defineChain({
+  id: baseSepolia.id,
+  caipNetworkId: `eip155:${baseSepolia.id}`,
+  chainNamespace: "eip155",
+  name: baseSepolia.name,
+  nativeCurrency: baseSepolia.nativeCurrency,
+  rpcUrls: baseSepolia.rpcUrls,
+  blockExplorers: baseSepolia.blockExplorers,
+  testnet: true,
+});
+
 export const wagmiAdapter = new WagmiAdapter({
   projectId: REOWN_PROJECT_ID,
-  networks: [genlayerCaipNetwork],
+  networks: [genlayerCaipNetwork, baseSepoliaCaipNetwork],
 });
 
 // AppKit's own hooks (useAppKit/useAppKitAccount/...) require createAppKit
@@ -47,7 +59,7 @@ export function ensureAppKit() {
   }
   createAppKit({
     adapters: [wagmiAdapter],
-    networks: [genlayerCaipNetwork],
+    networks: [genlayerCaipNetwork, baseSepoliaCaipNetwork],
     projectId: REOWN_PROJECT_ID,
     metadata: {
       name: "Covenant Watch",

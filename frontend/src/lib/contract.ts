@@ -6,7 +6,8 @@
 // Method names/args are taken directly from contracts/covenant_watch.py —
 // never invented.
 
-import { getReadClient, getWalletClient, CONTRACT_ADDRESS } from "./genlayer";
+import { ensureGenLayerNetwork, getReadClient, getWalletClient, CONTRACT_ADDRESS } from "./genlayer";
+import { GENLAYER_NETWORK } from "./config";
 
 export type SourceType = "ONCHAIN" | "OFFCHAIN";
 
@@ -140,10 +141,12 @@ export interface Signer {
 }
 
 async function write(signer: Signer, functionName: string, args: any[] = [], value: bigint = 0n) {
+  await ensureGenLayerNetwork(signer.provider);
   // Account is bound on the client itself (see getWalletClient) so viem
   // normalizes it into a proper Account — never pass the raw address
   // string as a per-call `account` here, see genlayer.ts for why.
   const client = getWalletClient(signer.provider, signer.address);
+  await client.connect(GENLAYER_NETWORK);
   return client.writeContract({
     address: CONTRACT_ADDRESS,
     functionName,
