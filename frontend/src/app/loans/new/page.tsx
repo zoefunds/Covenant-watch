@@ -185,7 +185,7 @@ export default function NewLoanPage() {
 
     // Funds move first and only on Base Sepolia. GenLayer receives the same
     // terms afterward and is used exclusively for covenant adjudication.
-    const baseLoan = await createBaseLoan(signer, borrower, principalUsdc, collateralUsdc, interestBps, maturityTs);
+    const baseLoan = await createBaseLoan(signer, borrower, principalUsdc, collateralUsdc, interestBps, maturityTs, cleanCovenants.length);
     if (baseLoan.loanId < 0) throw new Error("Base Sepolia did not return a valid loan id");
     const result = await runTrackedWrite(
       () =>

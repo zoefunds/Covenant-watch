@@ -27,6 +27,8 @@ contract CovenantWatchEscrow {
         uint32 currentInterestBps;
         uint64 maturity;
         uint8 breachTier;
+        uint16 requiredCompliantChecks;
+        uint16 compliantChecks;
         Status status;
         bool principalClaimed;
     }
@@ -63,15 +65,15 @@ contract CovenantWatchEscrow {
         relayer = relayer_;
     }
 
-    function createLoan(address borrower, uint256 principal, uint256 collateral, uint32 interestBps, uint64 maturity)
+    function createLoan(address borrower, uint256 principal, uint256 collateral, uint32 interestBps, uint64 maturity, uint16 requiredCompliantChecks)
         external nonReentrant returns (uint256 loanId)
     {
         require(borrower != address(0) && borrower != msg.sender, "invalid borrower");
         require(principal > 0 && collateral > 0, "zero amount");
-        require(interestBps <= BPS && maturity > block.timestamp, "invalid terms");
+        require(interestBps <= BPS && maturity > block.timestamp && requiredCompliantChecks > 0, "invalid terms");
         loanId = loanCount++;
         loans[loanId] = Loan(msg.sender, borrower, principal, collateral, principal, 0, 0, 0,
-            interestBps, interestBps, maturity, 0, Status.Created, false);
+            interestBps, interestBps, maturity, 0, requiredCompliantChecks, 0, Status.Created, false);
         require(usdc.transferFrom(msg.sender, address(this), principal), "principal transfer failed");
         emit LoanCreated(loanId, msg.sender, borrower, principal, collateral);
     }
@@ -96,7 +98,10 @@ contract CovenantWatchEscrow {
         require(tier2SeizureBps <= BPS, "invalid seizure");
         decisionRelayed[loanId][checkId] = true;
         uint256 consequence;
-        if (decision == Decision.Breach) {
+        if (decision == Decision.Compliant) {
+            require(loan.compliantChecks < loan.requiredCompliantChecks, "compliance already satisfied");
+            loan.compliantChecks += 1;
+        } else if (decision == Decision.Breach) {
             uint8 tier = loan.breachTier + 1;
             if (tier > 3) tier = 3;
             loan.breachTier = tier;
@@ -124,6 +129,7 @@ contract CovenantWatchEscrow {
         Loan storage loan = loans[loanId];
         require(msg.sender == loan.borrower && !loan.principalClaimed, "cannot claim");
         require(loan.status == Status.Active || loan.status == Status.Tier1 || loan.status == Status.Tier2, "inactive");
+        require(loan.compliantChecks >= loan.requiredCompliantChecks, "compliance checks incomplete");
         uint256 amount = loan.principalEscrowed;
         require(amount > 0, "nothing claimable");
         loan.principalEscrowed = 0;

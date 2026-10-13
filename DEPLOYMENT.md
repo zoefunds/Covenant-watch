@@ -8,8 +8,11 @@ Last verified: 13 October 2026.
 |---|---|
 | GenLayer StudioNet adjudicator | `0xa49283a086fE5122Cf3967b6ADb50A50fA736905` |
 | GenLayer deploy tx | `0x37f1509f624da25dd0739b0d6999529d8bcd57b8adc06828a0c2cfa9ade41405` |
-| Base Sepolia escrow | `0x8a34e37A4A1Fe74848389F13033099c0Fe889472` |
-| Base deploy tx | `0xee049ce31c65e90f1f1a605f342ef796e21814cd1d6e7e4ab9fd424fc9e5a604` |
+| Base Sepolia escrow | `0x8D9cc4Efd412cEd3c10de543a46b8390CAa8ADe7` |
+| Base deploy tx | `0xfa10de0df52a3d569fb956fa1e3ee75238c78f957574f627132ee31ad939ebfe` |
+| Dedicated Base relayer | `0x35F5ea45122eE7Dd5Ec6aA6aab961E9147e3e9e8` |
+| Relayer rotation tx | `0xa5429e4fed4b141895c00e49eeb4e31f79dc7345db12bce068a36cfcd0f635ae` |
+| Relayer funding tx | `0xd2088bc32f7cf7143b0e5f44060fc2e0eacdb55fa58264e50d885b031bfdec34` |
 | Base Sepolia USDC | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` |
 | Frontend | https://covenant-watch.vercel.app |
 | Backend | https://covenant-watch-api.fly.dev |

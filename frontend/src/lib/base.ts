@@ -10,7 +10,7 @@ const escrowAbi = [
   { type: "function", name: "createLoan", stateMutability: "nonpayable", inputs: [
     { name: "borrower", type: "address" }, { name: "principal", type: "uint256" },
     { name: "collateral", type: "uint256" }, { name: "interestBps", type: "uint32" },
-    { name: "maturity", type: "uint64" }], outputs: [{ name: "loanId", type: "uint256" }] },
+    { name: "maturity", type: "uint64" }, { name: "requiredCompliantChecks", type: "uint16" }], outputs: [{ name: "loanId", type: "uint256" }] },
   { type: "function", name: "stakeCollateral", stateMutability: "nonpayable", inputs: [{ name: "loanId", type: "uint256" }], outputs: [] },
   { type: "function", name: "claimPrincipal", stateMutability: "nonpayable", inputs: [{ name: "loanId", type: "uint256" }], outputs: [] },
   { type: "function", name: "repay", stateMutability: "nonpayable", inputs: [{ name: "loanId", type: "uint256" }], outputs: [] },
@@ -35,12 +35,12 @@ async function send(signer: Signer, to: `0x${string}`, data: `0x${string}`) {
   return hash;
 }
 
-export async function createBaseLoan(signer: Signer, borrower: string, principalUsdc: string, collateralUsdc: string, interestBps: number, maturity: number) {
+export async function createBaseLoan(signer: Signer, borrower: string, principalUsdc: string, collateralUsdc: string, interestBps: number, maturity: number, requiredCompliantChecks: number) {
   const client = createPublicClient({ chain: baseSepolia, transport: http() });
   const loanId = await client.readContract({ address: BASE_ESCROW_ADDRESS, abi: escrowAbi, functionName: "loanCount" });
   const principal = parseUnits(principalUsdc, 6);
   await send(signer, BASE_USDC_ADDRESS, encodeFunctionData({ abi: erc20Abi, functionName: "approve", args: [BASE_ESCROW_ADDRESS, principal] }));
-  const hash = await send(signer, BASE_ESCROW_ADDRESS, encodeFunctionData({ abi: escrowAbi, functionName: "createLoan", args: [borrower as `0x${string}`, principal, parseUnits(collateralUsdc, 6), interestBps, BigInt(maturity)] }));
+  const hash = await send(signer, BASE_ESCROW_ADDRESS, encodeFunctionData({ abi: escrowAbi, functionName: "createLoan", args: [borrower as `0x${string}`, principal, parseUnits(collateralUsdc, 6), interestBps, BigInt(maturity), requiredCompliantChecks] }));
   return { loanId: Number(loanId), hash };
 }
 

@@ -134,7 +134,10 @@ def _upsert_covenant(db, loan_row: Loan, chain_covenant_id: int, cov_dict: dict)
     row.condition_spec = cov_dict.get("condition_spec", {}) or {
         k: cov_dict[k] for k in ("condition_field", "operator", "threshold_scaled") if k in cov_dict
     }
-    row.consequence_schedule = cov_dict.get("consequence_schedule", {})
+    row.consequence_schedule = cov_dict.get("consequence_schedule", {}) or {
+        "tier1_interest_step_up_bps": int(cov_dict.get("tier1_interest_step_up_bps", 0)),
+        "tier2_seizure_bps": int(cov_dict.get("tier2_seizure_bps", 0)),
+    }
     row.challenge_window_seconds = int(cov_dict.get("challenge_window_seconds", 0))
     row.raw_snapshot = cov_dict
     db.add(row)
@@ -298,8 +301,43 @@ def run_sync_once() -> None:
         raise SyncAlreadyRunningError("an indexer sync pass is already running")
     try:
         _run_sync_once_unlocked()
+        _relay_finalized_checks()
     finally:
         _SYNC_LOCK.release()
+
+
+def _relay_finalized_checks() -> None:
+    """Relay every newly finalized GenLayer decision to Base exactly once.
+
+    Base's `(loanId, checkId)` mapping is the authoritative idempotency gate,
+    so a crash after confirmation is safe: the next sweep observes it and
+    skips rather than applying an economic consequence twice.
+    """
+    settings = get_settings()
+    if not settings.BASE_ESCROW_ADDRESS or not settings.BASE_RELAYER_PRIVATE_KEY:
+        return
+    from app.services.base_sepolia import is_decision_relayed, relay_finalized_decision
+    decision_codes = {CheckStatus.compliant: 0, CheckStatus.breach: 1, CheckStatus.inconclusive: 2}
+    with session_scope() as db:
+        rows = (
+            db.query(Check, Covenant)
+            .join(Covenant, Check.covenant_id == Covenant.id)
+            .filter(Check.finalized_at.is_not(None), Check.status.in_(tuple(decision_codes)))
+            .order_by(Check.chain_check_id.asc())
+            .all()
+        )
+        for check, covenant in rows:
+            if is_decision_relayed(check.chain_loan_id, check.chain_check_id):
+                continue
+            schedule = covenant.consequence_schedule or {}
+            tx_hash = relay_finalized_decision(
+                check.chain_loan_id,
+                check.chain_check_id,
+                decision_codes[check.status],
+                int(schedule.get("tier1_interest_step_up_bps", 0)),
+                int(schedule.get("tier2_seizure_bps", 0)),
+            )
+            log.info("indexer.decision_relayed", loan_id=check.chain_loan_id, check_id=check.chain_check_id, base_tx_hash=tx_hash)
 
 
 async def indexer_loop(stop_event: asyncio.Event) -> None:

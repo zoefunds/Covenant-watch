@@ -41,7 +41,7 @@ def send(account, fn=None, value=0):
 
 def state(loan_id):
     v = escrow.functions.loans(loan_id).call()
-    keys = ["lender","borrower","principal","collateralRequired","principalEscrowed","collateralEscrowed","lenderClaimable","borrowerClaimable","baseInterestBps","currentInterestBps","maturity","breachTier","status","principalClaimed"]
+    keys = ["lender","borrower","principal","collateralRequired","principalEscrowed","collateralEscrowed","lenderClaimable","borrowerClaimable","baseInterestBps","currentInterestBps","maturity","breachTier","requiredCompliantChecks","compliantChecks","status","principalClaimed"]
     return dict(zip(keys, v))
 
 results = []
@@ -56,7 +56,7 @@ for n in (1, 2, 3):
     loan_id = escrow.functions.loanCount().call()
     txs = {}
     send(deployer, erc20.functions.approve(ESCROW, 10*U))
-    txs["create"] = send(deployer, escrow.functions.createLoan(borrower.address, 10*U, 15*U, 500, int(time.time()) + 30*86400))
+    txs["create"] = send(deployer, escrow.functions.createLoan(borrower.address, 10*U, 15*U, 500, int(time.time()) + 30*86400, 1))
     send(borrower, erc20.functions.approve(ESCROW, 15*U))
     txs["stake"] = send(borrower, escrow.functions.stakeCollateral(loan_id))
     if n == 1:

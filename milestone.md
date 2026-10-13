@@ -14,8 +14,11 @@ This follows the Meme Olympics chain split, adapted to Covenant Watch's loan sta
 
 | Component | Address / transaction |
 |---|---|
-| Base Sepolia escrow | `0x8a34e37A4A1Fe74848389F13033099c0Fe889472` |
-| Base deployment tx | `0xee049ce31c65e90f1f1a605f342ef796e21814cd1d6e7e4ab9fd424fc9e5a604` |
+| Base Sepolia escrow | `0x8D9cc4Efd412cEd3c10de543a46b8390CAa8ADe7` |
+| Base deployment tx | `0xfa10de0df52a3d569fb956fa1e3ee75238c78f957574f627132ee31ad939ebfe` |
+| Dedicated Base relayer | `0x35F5ea45122eE7Dd5Ec6aA6aab961E9147e3e9e8` |
+| Relayer rotation tx | `0xa5429e4fed4b141895c00e49eeb4e31f79dc7345db12bce068a36cfcd0f635ae` |
+| Relayer funding tx | `0xd2088bc32f7cf7143b0e5f44060fc2e0eacdb55fa58264e50d885b031bfdec34` |
 | Base Sepolia USDC | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` |
 | GenLayer adjudicator | `0xa49283a086fE5122Cf3967b6ADb50A50fA736905` |
 | GenLayer deployment tx | `0x37f1509f624da25dd0739b0d6999529d8bcd57b8adc06828a0c2cfa9ade41405` |
@@ -24,7 +27,7 @@ The GenLayer deployment reached `FINALIZED`, executed successfully, and received
 
 ## Implementation
 
-The Base contract provides `createLoan`, `stakeCollateral`, `applyDecision`, `claimPrincipal`, exact `repay`, maturity settlement, cancellation, and pull-based `claimSettlement`. It includes non-reentrancy, checks-effects-interactions, an immutable USDC address, a rotatable relayer, and per-check replay protection.
+The Base contract provides `createLoan`, `stakeCollateral`, `applyDecision`, `claimPrincipal`, exact `repay`, maturity settlement, cancellation, and pull-based `claimSettlement`. Principal remains locked until the required number of unique compliant GenLayer decisions have been relayed. It includes non-reentrancy, checks-effects-interactions, an immutable USDC address, a rotatable relayer, and per-check replay protection.
 
 Native GEN escrow and all payout functions were removed from GenLayer. `create_loan` records six-decimal USDC terms without call value. `activate_base_loan` and `mark_decision_relayed` store Base transaction hashes only. Evidence fetching, structured validator equivalence, challenges, and finalization remain on GenLayer.
 
@@ -44,8 +47,8 @@ The matching Foundry suite passes 3/3. Backend tests pass 17/17, the Solidity bu
 
 ## Operations and security
 
-- The supplied wallet is a throwaway testnet deployer/relayer. Its private key is not committed.
-- Production must inject `BASE_RELAYER_PRIVATE_KEY` as a backend secret.
+- The supplied wallet was used only as the throwaway testnet deployer and to authorize the dedicated relayer. Its private key is not committed or stored by the application.
+- Fly stores a separate randomly generated `BASE_RELAYER_PRIVATE_KEY` as an encrypted production secret. Only its public address is documented.
 - Base and GenLayer loan IDs are synchronized from fresh deployments.
 - Relay only after GenLayer finality. Failed submissions may retry; successful submissions are rejected on replay.
 

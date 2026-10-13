@@ -33,13 +33,14 @@ contract CovenantWatchEscrowTest {
     }
 
     function createAndStake() internal returns (uint256 id) {
-        vm.prank(lender); id = escrow.createLoan(borrower, 1_000 * U, 1_500 * U, 500, uint64(block.timestamp + 30 days));
+        vm.prank(lender); id = escrow.createLoan(borrower, 1_000 * U, 1_500 * U, 500, uint64(block.timestamp + 30 days), 1);
         vm.prank(borrower); escrow.stakeCollateral(id);
     }
 
     /// Scenario 1: compliant adjudication, principal draw, exact USDC repayment, both pull claims.
     function testE2E_CompliantRepayment() public {
         uint256 id = createAndStake();
+        vm.prank(borrower); vm.expectRevert(); escrow.claimPrincipal(id);
         escrow.applyDecision(id, 100, CovenantWatchEscrow.Decision.Compliant, 200, 2500);
         vm.prank(borrower); escrow.claimPrincipal(id);
         vm.prank(borrower); escrow.repay(id);
@@ -54,7 +55,7 @@ contract CovenantWatchEscrowTest {
         uint256 id = createAndStake();
         escrow.applyDecision(id, 200, CovenantWatchEscrow.Decision.Breach, 200, 2500);
         escrow.applyDecision(id, 201, CovenantWatchEscrow.Decision.Breach, 200, 2500);
-        (,,,,, uint256 collateralEscrowed, uint256 lenderClaimable,,, uint32 rate,, uint8 tier,,) = escrow.loans(id);
+        (,,,,, uint256 collateralEscrowed, uint256 lenderClaimable,,, uint32 rate,, uint8 tier,,,,) = escrow.loans(id);
         assert(rate == 700 && tier == 2);
         assert(collateralEscrowed == 1_125 * U && lenderClaimable == 375 * U);
     }
@@ -66,7 +67,7 @@ contract CovenantWatchEscrowTest {
         vm.expectRevert(); escrow.applyDecision(id, 300, CovenantWatchEscrow.Decision.Breach, 100, 2000);
         escrow.applyDecision(id, 301, CovenantWatchEscrow.Decision.Breach, 100, 2000);
         escrow.applyDecision(id, 302, CovenantWatchEscrow.Decision.Breach, 100, 2000);
-        (,,,, uint256 principalEscrowed, uint256 collateralEscrowed, uint256 lenderClaimable,,,,, uint8 tier, CovenantWatchEscrow.Status status,) = escrow.loans(id);
+        (,,,, uint256 principalEscrowed, uint256 collateralEscrowed, uint256 lenderClaimable,,,,, uint8 tier,,, CovenantWatchEscrow.Status status,) = escrow.loans(id);
         assert(principalEscrowed == 0 && collateralEscrowed == 0);
         assert(lenderClaimable == 2_500 * U && tier == 3 && status == CovenantWatchEscrow.Status.Defaulted);
     }

@@ -22,7 +22,10 @@ ESCROW_ABI = [
         {"name":"lenderClaimable","type":"uint256"},{"name":"borrowerClaimable","type":"uint256"},
         {"name":"baseInterestBps","type":"uint32"},{"name":"currentInterestBps","type":"uint32"},
         {"name":"maturity","type":"uint64"},{"name":"breachTier","type":"uint8"},
+        {"name":"requiredCompliantChecks","type":"uint16"},{"name":"compliantChecks","type":"uint16"},
         {"name":"status","type":"uint8"},{"name":"principalClaimed","type":"bool"}]},
+    {"type":"function","name":"decisionRelayed","stateMutability":"view","inputs":[
+        {"name":"","type":"uint256"},{"name":"","type":"uint256"}],"outputs":[{"type":"bool"}]},
 ]
 
 def _web3() -> Web3:
@@ -34,7 +37,7 @@ def get_base_loan(loan_id: int) -> dict:
         raise RuntimeError("BASE_ESCROW_ADDRESS is not configured")
     w3 = _web3()
     values = w3.eth.contract(address=Web3.to_checksum_address(settings.BASE_ESCROW_ADDRESS), abi=ESCROW_ABI).functions.loans(loan_id).call()
-    names = ["lender","borrower","principal","collateral_required","principal_escrowed","collateral_escrowed","lender_claimable","borrower_claimable","base_interest_bps","current_interest_bps","maturity","breach_tier","status","principal_claimed"]
+    names = ["lender","borrower","principal","collateral_required","principal_escrowed","collateral_escrowed","lender_claimable","borrower_claimable","base_interest_bps","current_interest_bps","maturity","breach_tier","required_compliant_checks","compliant_checks","status","principal_claimed"]
     return dict(zip(names, values))
 
 def relay_finalized_decision(loan_id: int, check_id: int, decision: int, tier1_step_bps: int, tier2_seizure_bps: int) -> str:
@@ -55,3 +58,11 @@ def relay_finalized_decision(loan_id: int, check_id: int, decision: int, tier1_s
     if receipt.status != 1:
         raise RuntimeError(f"Base decision relay reverted: {tx_hash.hex()}")
     return tx_hash.hex()
+
+def is_decision_relayed(loan_id: int, check_id: int) -> bool:
+    settings = get_settings()
+    if not settings.BASE_ESCROW_ADDRESS:
+        return False
+    w3 = _web3()
+    contract = w3.eth.contract(address=Web3.to_checksum_address(settings.BASE_ESCROW_ADDRESS), abi=ESCROW_ABI)
+    return bool(contract.functions.decisionRelayed(loan_id, check_id).call())
