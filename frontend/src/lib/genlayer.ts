@@ -23,11 +23,8 @@ export function getReadClient(): GenLayerClient<any> {
 }
 
 /**
- * Write-capable client bound to whatever EIP-1193 provider Reown AppKit
- * connected (see useAppKitProvider in WalletContext) — a real wallet
- * signature request, never a simulated/local-only signer. Callers must
- * pass the live provider from the AppKit hook; there is no window.ethereum
- * fallback because AppKit is the single connect path for this app.
+ * Write-capable client bound to the EIP-6963 provider explicitly selected
+ * by the user — the same provider used for login and Base transactions.
  *
  * `account` MUST be bound here, at client-construction time, as the plain
  * address string — genlayer-js hands that straight to viem's
@@ -43,7 +40,7 @@ export function getReadClient(): GenLayerClient<any> {
  */
 export function getWalletClient(provider: any, address?: string): GenLayerClient<any> {
   if (!provider) {
-    throw new Error("No wallet connected. Use the Connect Wallet button (Reown AppKit) to continue.");
+    throw new Error("No browser wallet connected. Use Connect Wallet to continue.");
   }
   const chain = resolveChain();
   return createClient({ chain, provider, ...(address ? { account: address as `0x${string}` } : {}) });

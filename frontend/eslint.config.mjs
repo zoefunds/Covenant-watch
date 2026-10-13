@@ -11,9 +11,8 @@ const eslintConfig = defineConfig([
       // intentionally loose (contract-shape-dependent); typed wrappers in
       // lib/contract.ts + lib/tx.ts document the real shapes we care about.
       "@typescript-eslint/no-explicit-any": "off",
-      // Data-fetching effects (setLoans(null) before a fetch, a mounted
-      // flag for client-only AppKit rendering) are a standard, deliberate
-      // pattern throughout this app, not an accidental cascade.
+      // Data-fetching effects (for example setLoans(null) before a fetch)
+      // are a standard, deliberate pattern throughout this app.
       "react-hooks/set-state-in-effect": "off",
     },
   },

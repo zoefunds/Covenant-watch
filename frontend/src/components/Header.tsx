@@ -16,7 +16,7 @@ const NAV = [
 
 export function Header() {
   const pathname = usePathname();
-  const { address, sessionAddress, authenticating, error, openConnectModal, signInWithEthereum, disconnect } =
+  const { address, sessionAddress, connecting, authenticating, error, openConnectModal, signInWithEthereum, disconnect } =
     useWallet();
 
   return (
@@ -60,8 +60,8 @@ export function Header() {
               </Button>
             </div>
           ) : (
-            <Button onClick={openConnectModal} className="!px-3 !py-1.5 text-xs">
-              Connect wallet
+            <Button onClick={openConnectModal} disabled={connecting} className="!px-3 !py-1.5 text-xs">
+              {connecting ? "Connecting…" : "Connect wallet"}
             </Button>
           )}
         </div>

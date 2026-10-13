@@ -1,15 +1,11 @@
 "use client";
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { useAppKit, useAppKitAccount, useAppKitProvider } from "@reown/appkit/react";
 import { authMe, authNonce, authVerify, authLogout } from "@/lib/api";
-
-interface EIP1193Provider {
-  request: (args: { method: string; params?: any[] }) => Promise<any>;
-}
+import { clearSelectedWalletProvider, requestWalletProvider } from "@/lib/walletProviders";
 
 interface WalletState {
-  address: string | null; // connected wallet address (Reown AppKit) — connection only, not authenticated
+  address: string | null;
   sessionAddress: string | null; // address the backend session actually authenticated via SIWE
   connecting: boolean;
   authenticating: boolean;
@@ -22,14 +18,11 @@ interface WalletState {
 const WalletContext = createContext<WalletState | null>(null);
 
 export function WalletProvider({ children }: { children: React.ReactNode }) {
-  const { open } = useAppKit();
-  const { address, isConnected } = useAppKitAccount();
-  const { walletProvider } = useAppKitProvider<EIP1193Provider>("eip155");
-
+  const [address, setAddress] = useState<string | null>(null);
   const [sessionAddress, setSessionAddress] = useState<string | null>(null);
   const [authenticating, setAuthenticating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const connecting = false;
+  const [connecting, setConnecting] = useState(false);
 
   // Restore an existing backend session (httpOnly cookie) on load.
   useEffect(() => {
@@ -43,31 +36,43 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   // (rather than setState-in-effect) so the UI never shows a stale
   // authenticated state. The httpOnly cookie itself is only cleared via
   // /auth/logout on explicit sign-out.
-  const sessionMatchesWallet =
-    isConnected && sessionAddress && address ? sessionAddress.toLowerCase() === address.toLowerCase() : isConnected;
+  const sessionMatchesWallet = sessionAddress && address ? sessionAddress.toLowerCase() === address.toLowerCase() : false;
   const effectiveSessionAddress = sessionMatchesWallet ? sessionAddress : null;
 
-  const openConnectModal = useCallback(() => {
+  const openConnectModal = useCallback(async () => {
     setError(null);
-    open();
-  }, [open]);
+    setConnecting(true);
+    try {
+      const provider = await requestWalletProvider();
+      const accounts = await provider.request({ method: "eth_requestAccounts" }) as string[];
+      if (!accounts?.[0]) throw new Error("No account returned by wallet.");
+      setAddress(accounts[0]);
+      provider.on?.("accountsChanged", (...args: any[]) => {
+        setAddress(((args[0] as string[])?.[0]) || null);
+      });
+    } catch (err: any) {
+      setError(err?.message || "Wallet connection failed");
+    } finally {
+      setConnecting(false);
+    }
+  }, []);
 
-  // Real SIWE-style round trip against the backend: nonce -> sign via the
-  // AppKit-connected wallet's own provider -> verify. AppKit only got us a
-  // connection; this is what actually authenticates the session.
+  // Real SIWE-style round trip: nonce -> personal_sign through the exact
+  // EIP-6963 provider selected above -> backend verification.
   const signInWithEthereum = useCallback(async () => {
-    if (!address || !walletProvider) {
+    if (!address) {
       setError("Connect a wallet first.");
       return;
     }
     setError(null);
     setAuthenticating(true);
     try {
+      const provider = await requestWalletProvider();
       const nonceRes = await authNonce(address);
-      const signature: string = await walletProvider.request({
+      const signature = await provider.request({
         method: "personal_sign",
         params: [nonceRes.message, address],
-      });
+      }) as string;
       const verified = await authVerify(address, nonceRes.message, signature);
       setSessionAddress(verified.address);
     } catch (err: any) {
@@ -76,13 +81,15 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setAuthenticating(false);
     }
-  }, [address, walletProvider]);
+  }, [address]);
 
   const disconnect = useCallback(async () => {
     try {
       await authLogout();
     } catch {}
     setSessionAddress(null);
+    setAddress(null);
+    clearSelectedWalletProvider();
   }, []);
 
   const value = useMemo(

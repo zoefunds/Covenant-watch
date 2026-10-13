@@ -131,10 +131,7 @@ async function read<T = any>(functionName: string, args: any[] = []): Promise<T>
   }) as Promise<T>;
 }
 
-// Every write call needs the live EIP-1193 provider + address Reown AppKit
-// connected (see useAppKitProvider/useAppKitAccount in WalletContext) —
-// passed in explicitly by the caller rather than re-derived from
-// window.ethereum, since AppKit is the single connect path for this app.
+// Every write uses the exact EIP-6963 provider selected at connection time.
 export interface Signer {
   provider: any;
   address: string;

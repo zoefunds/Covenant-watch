@@ -22,9 +22,3 @@ export const BASE_EXPLORER_URL = "https://sepolia.basescan.org";
 
 export const GENLAYER_EXPLORER_URL =
   process.env.NEXT_PUBLIC_GENLAYER_EXPLORER_URL || "https://explorer-studio.genlayer.com/";
-
-// Reown (WalletConnect) AppKit project id — https://dashboard.reown.com.
-// AppKit only handles wallet CONNECTION; it is never treated as
-// authentication on its own — every session still goes through the real
-// SIWE nonce/verify round trip against the backend (see WalletContext).
-export const REOWN_PROJECT_ID = process.env.NEXT_PUBLIC_REOWN_PROJECT_ID || "";

@@ -16,30 +16,25 @@ Live: https://covenant-watch.vercel.app
 JetBrains Mono with `tabular-nums` for all onchain numeric/hash data, 4px/8px
 radii, a `1px solid #00F0FF` focus ring.
 
-## Wallet connection: Reown (WalletConnect) AppKit
+## Wallet connection: direct injected provider
 
-Wallet connection uses `@reown/appkit` + `@reown/appkit-adapter-wagmi`
-(backed by `wagmi`/`viem`), configured in `src/lib/appkit.ts` for both
-GenLayer StudioNet and Base Sepolia. Every write re-reads the wallet's active
-chain, switches (or adds) the required network, and verifies the result before
-requesting a signature. GenLayer writes additionally call the SDK's
-`client.connect("studionet")` before submission. Loan origination exposes the
-USDC approval, Base escrow, and GenLayer registration as separate live steps
-with explorer links instead of hiding the two-chain flow behind one button.
+Wallet connection follows Meme Olympics' EIP-6963 flow. Installed wallets are
+discovered directly, the user chooses when multiple providers exist, and that
+exact EIP-1193 provider signs login, Base Sepolia, and GenLayer operations.
+There is no Reown, wagmi connector, custodial signer, or ambiguous provider
+selection. Every write verifies the active network after switching/adding it.
 
 **Connecting a wallet is not authentication.** `src/context/WalletContext.tsx`
-keeps the AppKit-connected `address` and the backend-authenticated
+keeps the provider-connected `address` and the backend-authenticated
 `sessionAddress` as separate state. Signing in is a real SIWE round trip:
-`POST /auth/nonce` → `personal_sign` via the AppKit-connected wallet's own
+`POST /auth/nonce` → `personal_sign` via the selected wallet's own
 EIP-1193 provider → `POST /auth/verify` → httpOnly session cookie. If the
 connected wallet's address stops matching the authenticated session address
 (account switch, disconnect), the session is treated as unauthenticated
 immediately — never a stale "signed in" state for the wrong address.
 
-`src/components/AppShell.tsx` renders a loading placeholder until a
-`useEffect`-driven mounted flag flips, because AppKit's hooks require
-`createAppKit()` to have already run client-side and would otherwise throw
-during Next's static prerender pass.
+`src/components/WalletPicker.tsx` supplies the EIP-6963 chooser and
+`src/lib/walletProviders.ts` retains the selected provider across the flow.
 
 ## Contract wiring
 
@@ -110,12 +105,11 @@ NEXT_PUBLIC_CONTRACT_ADDRESS      # deployed contract address
 NEXT_PUBLIC_GENLAYER_NETWORK      # localnet | studionet | testnetAsimov | testnetBradbury | mainnet
 NEXT_PUBLIC_BACKEND_URL           # FastAPI backend base URL (read cache + auth only)
 NEXT_PUBLIC_GENLAYER_EXPLORER_URL # https://explorer-studio.genlayer.com/
-NEXT_PUBLIC_REOWN_PROJECT_ID      # Reown (WalletConnect) AppKit project id — https://dashboard.reown.com
 ```
 
 All `NEXT_PUBLIC_*` variables are safe to ship to the browser bundle by
 design — a public contract address, network name, API base URL, explorer
-URL, and WalletConnect project id, nothing secret.
+URL, and public chain configuration, nothing secret.
 
 ## Local development
 
@@ -123,8 +117,8 @@ URL, and WalletConnect project id, nothing secret.
 npm install
 cp .env.example .env.local
 # defaults already point at the live deployed contract
-# (0x5aD6959559D0eF030a62C625b9071eBE655af74a, studionet) and a working
-# Reown project id — only NEXT_PUBLIC_BACKEND_URL needs to match wherever
+# (0xA60b429D26831BB3E381b8Bba184D685b6741020, studionet) — only
+# NEXT_PUBLIC_BACKEND_URL needs to match wherever
 # you're running backend/ (default http://localhost:8000)
 
 npm run dev      # requires Node >=20.9
