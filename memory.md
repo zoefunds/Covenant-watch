@@ -1,125 +1,57 @@
-# Covenant Watch — Current Operational Record
+# Covenant Watch current operational record
 
-Last verified: 2026-10-05 (Africa/Lagos)
+Last verified: 13 October 2026 (Africa/Lagos).
 
-This file records current state only. Historical addresses, retired hostnames,
-superseded failures, and completed TODOs have intentionally been removed. Use
-Git history when an older implementation record is needed.
+This file records current state only. Retired addresses, old transaction demonstrations, superseded wallet stacks, and resolved failures are intentionally omitted; use Git history for historical investigation.
 
-## Production
+## Production inventory
 
 | Component | Current value |
 |---|---|
 | GenLayer network | StudioNet |
-| Audited contract | `0x5aD6959559D0eF030a62C625b9071eBE655af74a` |
-| Deployment transaction | `0x367cd6a76499da1ecf2024d0229595b62e199218d2b73bbf87a8c50aa6ae325a` |
+| GenLayer adjudicator | `0xb86d1525014c80F98E7f0C3Be2af60AF3ab761F8` |
+| GenLayer deployment transaction | `0x15aeb14989c76229ad0e409cb5affdbafea1aca643eef0113eafd5aecf3a4d9b` |
+| Base network | Base Sepolia, chain ID `84532` |
+| Base escrow | `0x6b806484E938E8Bf5eD65D1841543931240834ef` |
+| Base deployment transaction | `0x7240cc53bb05537aee0ced6675a4760d14204bbdd205676e2b1b8c34c44b5d1f` |
+| Circle test USDC | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` |
+| Base relayer | `0x35F5ea45122eE7Dd5Ec6aA6aab961E9147e3e9e8` |
 | Frontend | https://covenant-watch.vercel.app |
-| Vercel project | `covenant-watch` |
+| Vercel project / deployment | `covenant-watch` / `dpl_BG3fddp9AQWHYgTYFpESUZ8fJJ8J` |
 | Backend | https://covenant-watch-api.fly.dev |
-| Backend health | https://covenant-watch-api.fly.dev/healthz |
-| Fly app | `covenant-watch-api` |
-| Fly region | `iad` |
+| Fly app / region | `covenant-watch-api` / `iad` |
 
-The contract deployment is `FINALIZED` with five `AGREE` votes and a successful
-GenVM deployment execution. Frontend deployment
-`covenant-watch-cnxxyo4en-adebiyi2002gmailcoms-projects.vercel.app` was
-promoted to production with this address. The Fly backend's rolling configuration
-update completed successfully with the same contract address. No application
-write or read call has been made against this fresh deployment; user acceptance
-testing starts from the production frontend.
+The GenLayer deployment is finalized and successful with five agreeing validators. Both chain counters are zero, and the backend `/loans` response is empty. No live E2E loan has been submitted to the fresh pair.
 
-## Contract authority and trust boundaries
+## Live architecture
 
-- The contract is the sole authority for authorization, escrow accounting,
-  lifecycle transitions, deadlines, cooldowns, challenge eligibility,
-  covenant outcomes, breach consequences, repayment, and settlement.
-- The backend has no funded signer and no contract write/verdict endpoint. It
-  cannot alter a covenant, report compliance, move escrow, or finalize a check.
-- Frontend wallets submit writes directly through `genlayer-js`.
-- OFFCHAIN covenants commit 3–5 HTTPS URLs at origination. URLs and hostnames
-  must be unique. Every leader and validator independently fetches every URL;
-  callers and the backend cannot supply fetched content.
-- A strict majority of the source set must independently produce numeric values
-  agreeing within the contract's 2% tolerance. Otherwise the result is
-  `INCONCLUSIVE`; ambiguity never becomes an economic penalty.
-- The model extracts only a value. The contract deterministically applies the
-  immutable operator and threshold to classify `COMPLIANT` or `BREACH`.
-- Each check stores the fetched-bundle hash plus bounded per-publisher fetch and
-  extraction diagnostics. The full page body is not accepted from a caller.
-- Challenge evidence is additive and requires three distinct publisher hosts
-  before reevaluation. A challenge result is bound to the original result hash.
-- A confirmed breach consequence is applied only after its contract-enforced
-  challenge window closes.
-- Publisher collusion is the remaining oracle assumption. Validators can prove
-  independent retrieval and consensus, not the truthfulness of all publishers.
-  Signed attestations or a stronger oracle network would be a separate product
-  enhancement and must not introduce backend verdict authority.
+- Base is the only value layer and holds all principal and collateral USDC.
+- GenLayer stores paired loan/covenant metadata and adjudicates evidence.
+- The frontend directly uses a user-selected EIP-6963 provider for SIWE and all wallet writes. Reown and wagmi are absent.
+- The backend indexes GenLayer, enriches loans with Base state, authenticates sessions, previews URLs, and relays finalized decisions with a dedicated Base key.
+- The relayer key is stored only as `BASE_RELAYER_PRIVATE_KEY` in Fly secrets. Never place it in documentation, source, frontend variables, or logs.
 
-## Frontend finality and time behavior
+## Current transaction sequence
 
-- Write flows explicitly wait for `FINALIZED`, not the SDK's default
-  `ACCEPTED` state.
-- A finalized receipt is successful only when execution finished with a return;
-  a finalized revert or GenVM error remains a UI failure.
-- After finality, the frontend immediately rereads finalized contract state.
-- Submitted one-shot actions are locally disabled, and successful actions stay
-  disabled once refreshed contract state shows they cannot be repeated.
-- The principal-claim button remains disabled until the contract's
-  `can_claim_principal` view confirms that every covenant has a latest finalized
-  `COMPLIANT` check. `claim_principal` independently enforces the same rule.
-- Maturity, grace, challenge-window, and cooldown displays use a clock offset
-  obtained from `get_current_time`; countdowns update once per second and action
-  availability mirrors contract-enforced timestamps.
+1. Lender approves Base USDC and creates the Base escrow loan.
+2. The same wallet switches to GenLayer and registers the corresponding adjudication loan.
+3. Borrower approves and stakes Base USDC, then records the confirmed Base transaction on GenLayer.
+4. GenLayer checks and challenges reach finality.
+5. Backend relays the finalized result to Base and records the confirmed Base hash on GenLayer.
+6. User wallets draw, repay, settle, or claim on Base.
 
-## Live proof
+Loan IDs must match across both fresh deployments. The frontend counter guard blocks origination when they diverge.
 
-The production-gate lifecycle was executed on StudioNet against the audited
-deployment using three independent publisher pages:
+## Deployment invariants
 
-- `https://en.wikipedia.org/wiki/Bitcoin`
-- `https://river.com/learn/terms/1/21-million/`
-- `https://www.fidelitydigitalassets.com/research-and-insights/understanding-bitcoin-and-ethereum-supply`
+- Fly `CONTRACT_ADDRESS` and Vercel `NEXT_PUBLIC_CONTRACT_ADDRESS` equal the current GenLayer address.
+- Fly `BASE_ESCROW_ADDRESS` and Vercel `NEXT_PUBLIC_BASE_ESCROW_ADDRESS` equal the current Base address.
+- Both services use the Circle Base Sepolia USDC address above.
+- Address changes require a Fly restart and Vercel rebuild.
+- Never treat GenLayer `ACCEPTED` as final; require successful `FINALIZED` execution.
+- Never represent historical E2E receipts as evidence for a new contract pair.
+- Resolve partial cross-chain failures from confirmed state and transaction hashes; do not blindly repeat origination.
 
-Loan `0` completed the payable flow: create loan, lock collateral, trigger an
-LLM-backed validator check, claim principal, repay, and claim both
-settlement balances. The finalized check reported:
+## Acceptance status
 
-- status: `COMPLIANT`
-- observed value: `21000000.000000`
-- publisher quorum: `3/3`
-- agreeing execution validators observed by the harness: `3`
-- terminal loan state: `REPAID`
-
-An earlier attempt against cryptocurrency JSON API endpoints produced a GenVM
-host `INTERNAL_ERROR` before any validator round (`NO_MAJORITY`, zero validators).
-It did not create a covenant verdict or apply a consequence. Publisher-page
-sources completed successfully. The stored `source_diagnostics` field now makes
-ordinary fetch failures and inconclusive extractions visible per publisher.
-
-## Verification baseline
-
-- Contract direct tests: 38 passed.
-- Backend tests: 17 passed.
-- Frontend ESLint: passed.
-- Frontend TypeScript (`tsc --noEmit`): passed.
-- Frontend Next.js production build: passed with webpack. Optional Reown/Wagmi
-  connector-resolution warnings remain non-fatal and all routes were emitted.
-- `git diff --check`: passed.
-- Backend dependency restored to the pinned `genlayer-py==0.18.0` after live
-  tooling temporarily installed an older compatible SDK.
-
-The installed local GLSim still drops payable call values, so payable local
-escrow tests skip there. This is not a production gate because the complete
-payable and LLM-backed path passed on StudioNet.
-
-## Operational rules
-
-- Keep the contract address identical in Vercel
-  `NEXT_PUBLIC_CONTRACT_ADDRESS`, Fly `CONTRACT_ADDRESS`, local env files, and
-  documentation.
-- Never treat backend cache data or `ACCEPTED` transaction state as final.
-- Never add a backend signer or backend-mediated covenant verdict.
-- Do not reuse a failed or timed-out write blindly. Resolve its transaction
-  status and on-chain state first, then resume by the existing loan/check ID.
-- Run the contract, backend, frontend, and live checks described in
-  `AUDIT.md` and `DEPLOYMENT.md` before promoting a new contract address.
+Deployment receipts and zero-state reads have been verified. The local Foundry suite passed 3/3, the backend suite passed 17/17, and frontend lint, type checking, and production build passed after the current wallet and contract integration. These are local checks, not live-chain proof. Live USDC escrow, collateral movement, adjudication, and relay on the fresh addresses remain for user-run acceptance testing.

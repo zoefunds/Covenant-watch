@@ -1,97 +1,65 @@
-# Covenant Watch audit
+# Covenant Watch security review
 
-Date: 2026-10-05
+Last updated: 13 October 2026.
 
-## Enforced trust boundary
+## Current trust boundary
 
-- The backend has no contract write path, funded key, verdict endpoint, or
-  settlement authority. It only indexes public contract views and offers an
-  informational URL preview that never enters consensus.
-- The frontend sends writes directly from the connected wallet to the
-  contract. Every authorization, state transition, deadline, cooldown,
-  consequence, and transfer is re-checked by the contract.
-- An off-chain check accepts only an immutable creation-time set of 3–5 HTTPS
-  URLs on distinct publisher hostnames. The nondeterministic leader and every
-  validator independently render every URL and run each extraction prompt.
-  No backend-fetched body or verdict is accepted.
-- Equivalence requires the same status, the same rendered-input hash, and a
-  bounded numeric-value difference. The contract—not the model—derives
-  COMPLIANT or BREACH from the extracted number and immutable operator and
-  threshold.
-- A strict publisher majority must corroborate a numeric value within 2%; the
-  full fetched bundle is hashed and bounded per-publisher extraction
-  diagnostics are stored. A challenge needs its own three distinct publisher
-  hosts, is bound to the frozen primary hash, and is independently fetched by
-  every validator. A submitter's note alone cannot change a verdict.
-- On-chain covenants call the precommitted source contract directly during
-  contract execution. Malformed/unavailable reads become INCONCLUSIVE.
-  Off-chain challenge evidence cannot override deterministic on-chain data.
+- Base Sepolia contract `0x6b806484E938E8Bf5eD65D1841543931240834ef` is the sole authority for USDC custody, draw eligibility, repayment, breach consequences, maturity, and settlement.
+- GenLayer contract `0xb86d1525014c80F98E7f0C3Be2af60AF3ab761F8` is the authority for covenant definitions, evidence evaluation, challenges, and finalized adjudication. It does not custody value.
+- Browser wallets directly authorize loan creation, collateral staking, principal draw, repayment, and claims. The backend cannot initiate those user actions.
+- The backend holds a dedicated Base relayer key. Its authority is restricted by the Base contract to `applyDecision`; it cannot transfer arbitrary user USDC. This key remains a sensitive production secret and should be rotated if exposed.
+- API cache data is eventually consistent and non-authoritative. Contract reads and contract-enforced preconditions remain the final safety boundary.
 
-## Correctness and security fixes
+## Economic contract controls
 
-- Frontend receipt polling explicitly waits for `FINALIZED`, never the SDK's
-  default `ACCEPTED`, requires `FINISHED_WITH_RETURN` (a finalized revert is
-  a failure), and immediately re-reads contract state after finality.
-- Maturity, settlement, cooldown, and challenge-window countdowns update every
-  second from a contract-clock offset and disable actions until the contract
-  deadline is eligible.
-- Successful one-shot actions are disabled immediately to prevent duplicate
-  submissions while refreshed chain state propagates.
-- Covenant checks require an active collateralized loan; expired offers cannot
-  lock collateral. Principal remains escrowed until every covenant's latest
-  check is finalized `COMPLIANT`; the contract enforces this independently of
-  the frontend. Repayment requires that principal was drawn.
-- Breach tiers advance across the whole loan, including breaches of different
-  covenants. Default and timeout return any undrawn principal to the lender.
-- Terminal loans ignore stale pending consequences, exact repayment prevents
-  partial-value stranding/overpayment, and all outgoing transfers use the
-  contract's zero-before-transfer choke point.
-- Maturity settlement is permissionless and deterministic after a 14-day
-  repayment grace: undrawn loans unwind each party's escrow, while drawn and
-  unpaid loans default and credit all remaining collateral to the lender.
-- Indexer passes are single-flight through both a process lock and a PostgreSQL
-  transaction advisory lock across replicas. A timed-out synchronous RPC
-  worker retains its locks until it actually exits, preventing thread
-  accumulation and rejecting overlapping request-triggered refreshes with
-  HTTP 409.
-- Covenant/evidence URLs require HTTPS and reject obvious local/private
-  literal targets. Field names, addresses, numeric ranges, JSON size, evidence
-  counts, and consequence ranges are contract-bounded.
+- Base uses Circle test USDC at `0x036CbD53842c5426634e7929541eC2318f3dCF7e` and six-decimal base units.
+- ERC-20 transfers occur only through explicit escrow, stake, repay, and claim paths.
+- Token-moving functions use a non-reentrancy guard; settlement credits are zeroed before transfer.
+- Principal draw requires collateral and the configured number of unique compliant decisions.
+- Decision submissions are authorized by `relayer` and replay-protected by `(loanId, checkId)`.
+- Consequences progress across the loan: interest step-up, partial collateral seizure, then terminal default.
+- Exact repayment prevents partial-payment ambiguity. Permissionless maturity settlement resolves both undrawn and drawn-unpaid cases.
+- The owner can rotate the relayer and transfer ownership. Compromise of the owner can therefore replace the relayer; operational custody of the owner key is a material trust assumption.
 
-## Verification
+## Adjudication controls
 
-- Contract direct suite: 38 passed.
-- Backend suite: 17 passed.
-- Frontend ESLint: passed.
-- Frontend TypeScript (`tsc --noEmit`): passed.
-- `git diff --check`: passed.
-- The Next.js webpack production build completed. It reported pre-existing
-  optional connector-resolution warnings from the Reown/Wagmi dependency tree
-  (`@metamask/connect-evm`, `@walletconnect/ethereum-provider`, and Tempo's
-  `accounts` import), but emitted every application route successfully.
-- The five-validator GLSim launcher was repaired for the current SDK's
-  version-isolated contract registries. Repeated deployments now finalize
-  without cross-contract class contamination.
-- A retired StudioNet deployment finalized with validator consensus. Its live
-  escrow lifecycle on loan 0
-  finalized a `COMPLIANT` check at `21000000.000000`, corroborated 3/3
-  independent publishers with three agreeing execution validators, then
-  repaid and claimed both settlement balances successfully.
+- Covenant sources and economic consequence parameters are fixed at creation.
+- Off-chain covenants require multiple distinct HTTPS publisher hosts. Validators fetch sources independently and compare structured status, observed value, and source hash.
+- A strict publisher majority must corroborate the observed value within the configured tolerance. Missing, ambiguous, or disagreeing evidence yields `INCONCLUSIVE` instead of a penalty.
+- Challenge evidence is additive and cannot replace the original source set. Finalization is blocked until the challenge window closes.
+- A decision is eligible for relay only after GenLayer finality. `ACCEPTED` alone is insufficient.
 
-## Residual properties
+## Wallet and cross-chain controls
 
-- No single publisher is authoritative. A dishonest or unavailable minority
-  fails to control the result, as covered by the malicious-outlier test.
-  Publisher collusion remains an external-oracle assumption: software cannot
-  cryptographically prove a real-world statement without signed attestations
-  or a stronger oracle network.
-- LLM extraction is probabilistic. Economic classification is deterministic
-  and validators must agree on source bytes/status/value, so ambiguity fails
-  closed through disagreement or INCONCLUSIVE rather than applying a penalty.
-- The backend cache is eventually consistent and non-authoritative. Fund and
-  compliance writes remain safe if it is stale or unavailable because the
-  contract enforces every rule.
-- The installed local GLSim still does not forward transaction value into
-  `gl.message.value`, so payable local escrow cases skip by design. This is no
-  longer a production gate: the complete payable path and genuine LLM-backed
-  multi-validator source check passed on StudioNet as recorded above.
+- The frontend uses direct EIP-6963 discovery and retains the exact provider selected by the user. Reown and wagmi are not part of the runtime.
+- Connection and SIWE authentication are separate. Account changes invalidate a mismatched authenticated session.
+- Each Base or GenLayer write switches the selected wallet and then verifies the resulting chain before submission.
+- Origination compares Base and GenLayer counters before creating the paired loan. A mismatch stops the flow instead of silently pairing unrelated IDs.
+- The cross-chain operation is not atomic. A Base creation can confirm before GenLayer registration fails. The UI preserves confirmed transaction hashes and identifies the failed stage so recovery must use existing chain state rather than blindly creating another Base loan.
+
+## Backend controls
+
+- SIWE nonces are single-use and expire; authenticated endpoints rely on signed httpOnly cookies rather than request-body addresses.
+- URL preview rejects private, loopback, link-local, reserved, and metadata destinations across redirects. Preview output does not become a validator verdict.
+- Indexing uses process and PostgreSQL advisory locks. RPC usage is coordinated through Redis and bounded by the configured hourly budget.
+- Relay processing checks finalized indexed results and checks Base replay state before submission. A transaction receipt failure is surfaced instead of recorded as success.
+
+## Current verification status
+
+- Fresh Base deployment transaction: `0x7240cc53bb05537aee0ced6675a4760d14204bbdd205676e2b1b8c34c44b5d1f`.
+- Fresh GenLayer deployment transaction: `0x15aeb14989c76229ad0e409cb5affdbafea1aca643eef0113eafd5aecf3a4d9b`.
+- GenLayer deployment: finalized, successful, five agreeing validators.
+- Initial loan counters: zero on both chains.
+- Production API list after redeployment: empty.
+- Local Foundry escrow suite: 3 passed, 0 failed.
+- Backend pytest suite: 17 passed, 0 failed.
+- Frontend ESLint, TypeScript checking, and Next.js production build: passed.
+- Live E2E movement of USDC and a full adjudication relay on these fresh addresses has not been performed. It remains an acceptance requirement, not a completed audit claim.
+
+## Residual risks
+
+- Cross-chain state is coordinated operationally rather than by an atomic bridge. Recovery procedures and counter consistency are important.
+- The backend relayer and Base owner are privileged roles. Contract restrictions reduce relayer scope, but secure key storage and rotation remain necessary.
+- Publisher collusion and incorrect public information are external oracle risks. Multi-source consensus reduces but cannot eliminate them.
+- LLM extraction is probabilistic. Validator agreement and fail-closed `INCONCLUSIVE` handling reduce the chance that ambiguity becomes an economic penalty.
+- Testnet USDC and StudioNet are not production assets or production-final networks. A mainnet launch requires a new security review, deployment, monitoring, and acceptance test record.

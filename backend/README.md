@@ -1,87 +1,61 @@
-# Covenant Watch — Backend
+# Covenant Watch backend
 
-FastAPI, PostgreSQL, Redis, and an indexer for Covenant Watch. Production is
-`https://covenant-watch-api.fly.dev` (`covenant-watch-api`, Fly region `iad`).
+FastAPI, PostgreSQL, Redis, and an indexer/decision relayer for Covenant Watch. Production is `https://covenant-watch-api.fly.dev` (`covenant-watch-api`, Fly region `iad`).
 
 ## Authority boundary
 
-The backend is not a transaction relayer and has no funded contract signer.
-It cannot create or mutate loans, decide covenant results, apply penalties,
-move escrow, submit challenges, or finalize checks. Those operations are sent
-from the user's wallet directly to the GenLayer contract and enforced there.
+The backend is non-custodial for user actions. Users approve USDC, create and fund loans, stake collateral, draw principal, repay, and claim directly from their browser wallets. The backend has one narrow funded role: it submits finalized GenLayer decisions to the configured Base escrow through `applyDecision`. Base independently checks the relayer address and rejects repeated `(loanId, checkId)` decisions.
 
-The backend provides:
+The service provides:
 
-- a rebuildable PostgreSQL read cache for lists, profiles, and history;
-- SIWE-style nonce, signature verification, and session cookies;
-- an informational SSRF-protected URL preview;
-- indexer health and a shared outbound RPC budget.
+- a rebuildable PostgreSQL cache for loan lists, profiles, and history;
+- direct Base state enrichment for paired loans;
+- SIWE-style nonce verification and signed session cookies;
+- an SSRF-protected informational URL preview;
+- GenLayer RPC budgeting and indexer health;
+- finalized-decision relay from GenLayer to Base Sepolia.
 
-Never use cached data to decide whether a money-moving action is currently
-allowed. The frontend rereads finalized contract state before/after writes, and
-the contract rechecks every rule regardless of UI or cache state.
+Cached data must not decide whether a money-moving action is valid. The Base and GenLayer contracts enforce their respective state machines.
 
-## Indexed cache
+## Indexing and relay
 
-`app/workers/indexer.py` polls contract views and scopes cached rows to the
-configured contract address. `POST /loans/sync` and background polling are
-serialized by both an in-process lock and a PostgreSQL transaction advisory
-lock, preventing overlap across replicas. A synchronous RPC worker that times
-out retains its lease until it actually exits, avoiding replacement-thread
-accumulation.
+`app/workers/indexer.py` polls the configured GenLayer contract and scopes rows to that address. Passes are serialized with an in-process lock and a PostgreSQL advisory lock. A timed-out synchronous RPC worker retains its lease until it exits, preventing replacement-thread accumulation.
 
-The production poll interval is 300 seconds. A just-finalized transaction can
-therefore be visible onchain before it appears in cached list/history routes.
-Detail screens explicitly use direct finalized reads when freshness matters.
+After indexing, the worker finds finalized, unrelayed checks. It verifies Base replay state, submits the mapped decision with `app/services/base_sepolia.py`, requires a successful Base receipt, and records the Base transaction hash on GenLayer. If relay configuration is absent, indexing continues without writes.
+
+The production poll interval is 300 seconds, so a finalized transaction may appear onchain before cached list/history routes update.
 
 ## Authentication
 
-Wallet connection and authentication are separate:
-
 1. `POST /auth/nonce` creates a single-use nonce with a five-minute TTL.
-2. The wallet signs the returned message.
-3. `POST /auth/verify` recovers the signer, matches the requested address,
-   rejects used/expired nonces, creates a session, and sets a signed httpOnly
-   cookie (`Secure` in production, `SameSite=strict`).
-4. Protected routes resolve that cookie through
-   `app.api.deps.require_session`; a request-body address is never sufficient.
+2. The selected browser wallet signs the returned message.
+3. `POST /auth/verify` recovers and checks the signer, consumes the nonce, creates a session, and sets a signed httpOnly cookie (`Secure` in production, `SameSite=strict`).
+4. Protected routes resolve that cookie; a request-body address is never sufficient.
 
-## URL preview and SSRF controls
+Wallet connection and backend authentication are separate states.
 
-`POST /covenants/preview-source` is a creation-time convenience only. It
-resolves DNS and blocks private, loopback, link-local, reserved, and metadata
-addresses on every redirect. Its response is never passed to the contract.
-During covenant evaluation each GenLayer leader/validator independently fetches
-all immutable source URLs stored by the contract.
+## URL preview
+
+`POST /covenants/preview-source` is creation-time assistance only. It resolves DNS and blocks private, loopback, link-local, reserved, and metadata destinations through redirects. Preview output never becomes a covenant verdict; GenLayer validators fetch the immutable source set independently.
 
 ## RPC budget and rate limiting
 
-All backend GenLayer reads pass through
-`app.services.chain_client.call_contract_view_budgeted`. Redis holds a shared
-fixed-window budget (`genlayer:rpc_budget:<epoch-hour>`), configured by
-`GENLAYER_RPC_HOURLY_BUDGET` and reported by `/healthz` and
-`/internal/rate-budget`.
-
-- Request-time budget exhaustion returns typed HTTP 503 plus `Retry-After`.
-- The indexer stops the current pass and waits for the budget reset.
-- Redis coordination failure logs loudly and fails open so an auxiliary
-  coordination outage does not take the API down.
-- SlowAPI also uses Redis so abuse limits are shared across instances. These
-  limits are defense in depth; contract cooldowns remain authoritative.
+GenLayer reads use `call_contract_view_budgeted`. Redis coordinates a fixed-window budget and SlowAPI rate limits across instances. Request-time budget exhaustion returns HTTP 503 with `Retry-After`; the indexer pauses its pass. Redis coordination failure is logged and fails open so an auxiliary outage does not take down the API.
 
 ## Configuration
 
-Copy `.env.example` to `.env`. Important values:
+Copy `.env.example` to `.env`. Current public values are:
 
-- `CONTRACT_ADDRESS=0x5aD6959559D0eF030a62C625b9071eBE655af74a`
-- `GENLAYER_NETWORK=studionet`
-- `DATABASE_URL` for PostgreSQL
-- `REDIS_URL` for shared coordination
-- a private, random `SESSION_SECRET`
-- `CORS_ALLOWED_ORIGINS=https://covenant-watch.vercel.app`
+```text
+CONTRACT_ADDRESS=0xb86d1525014c80F98E7f0C3Be2af60AF3ab761F8
+GENLAYER_NETWORK=studionet
+BASE_SEPOLIA_RPC_URL=https://sepolia.base.org
+BASE_USDC_ADDRESS=0x036CbD53842c5426634e7929541eC2318f3dCF7e
+BASE_ESCROW_ADDRESS=0x6b806484E938E8Bf5eD65D1841543931240834ef
+BASE_RELAYER_PRIVATE_KEY=<secret; backend only>
+```
 
-Settings are process-cached. After changing `CONTRACT_ADDRESS`, restart or
-redeploy; silent hot switching between contracts is intentionally unsupported.
+Also configure PostgreSQL `DATABASE_URL`, Redis `REDIS_URL`, a random `SESSION_SECRET`, and the allowed frontend origin. Settings are process-cached; restart after changing either contract address.
 
 ## Local development
 
@@ -96,33 +70,8 @@ uvicorn app.main:app --reload --port 8000
 curl http://localhost:8000/healthz
 ```
 
-Alternatively, `docker compose up --build` starts the packaged local services.
+`docker compose up --build` is the packaged alternative. Do not put a production or funded relayer key in a local file.
 
-## Production deployment
+## Current production state
 
-```bash
-cd backend
-fly secrets set \
-  CONTRACT_ADDRESS=0x5aD6959559D0eF030a62C625b9071eBE655af74a \
-  -a covenant-watch-api
-fly deploy -a covenant-watch-api
-curl https://covenant-watch-api.fly.dev/healthz
-```
-
-The Fly secret update itself restarts the machine. Run `fly deploy` when source,
-dependencies, migrations, or `fly.toml` changed. The release command applies
-Alembic migrations before the rolling machine update.
-
-## Verified state
-
-On 2026-10-05:
-
-- all 17 backend tests passed;
-- `genlayer-py==0.18.0` matched `requirements.txt`;
-- the production Fly machine restarted successfully with the audited address;
-- `/healthz` returned `status: ok`, `database: ok`, indexer `state: idle`, a
-  populated `last_success_at`, `last_error: null`, and
-  `contract_configured: true`.
-
-See root `AUDIT.md` for the complete security/verification report and
-`DEPLOYMENT.md` for the cross-component runbook.
+On 13 October 2026, Fly was configured with the fresh Base and GenLayer addresses. Health checks succeeded and `/loans` returned `[]`, consistent with both contracts reporting zero loans. No live E2E loan has been run against this address pair.

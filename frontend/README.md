@@ -1,143 +1,59 @@
-# Covenant Watch — Frontend
+# Covenant Watch frontend
 
-Next.js 16 (App Router) + TypeScript + Tailwind v4 app for Covenant Watch.
-Every loan/covenant write goes directly to the GenLayer contract via
-`genlayer-js` from the connected wallet — the backend is only ever a
-read-cache and SIWE auth service, never a proxy for a transaction. See
-repo-root [`README.md`](../README.md) for the overall project and
-[`memory.md`](../memory.md) for build history.
+Next.js 16, TypeScript, and Tailwind v4 browser application. Production: https://covenant-watch.vercel.app.
 
-Live: https://covenant-watch.vercel.app
+## Wallet connection
 
-## Design system
+The app follows Meme Olympics' direct EIP-6963 pattern. It discovers installed wallets, lets the user choose among providers, and retains that exact EIP-1193 provider for SIWE, Base Sepolia, and GenLayer StudioNet. Reown and wagmi are not used. Every write switches the selected wallet and verifies the resulting network before submission.
 
-"Obsidian Assurance" — a dark theme implemented as real Tailwind tokens in
-`src/app/globals.css`'s `@theme inline` block: Inter for UI chrome,
-JetBrains Mono with `tabular-nums` for all onchain numeric/hash data, 4px/8px
-radii, a `1px solid #00F0FF` focus ring.
+Connection and authentication remain separate. `WalletContext` tracks the connected address and authenticated session address independently. SIWE performs `/auth/nonce` → `personal_sign` → `/auth/verify`; an account switch or disconnect invalidates a mismatched UI session immediately.
 
-## Wallet connection: direct injected provider
+## Cross-chain transaction flow
 
-Wallet connection follows Meme Olympics' EIP-6963 flow. Installed wallets are
-discovered directly, the user chooses when multiple providers exist, and that
-exact EIP-1193 provider signs login, Base Sepolia, and GenLayer operations.
-There is no Reown, wagmi connector, custodial signer, or ambiguous provider
-selection. Every write verifies the active network after switching/adding it.
+- Origination: Base USDC `approve` → Base `createLoan` → GenLayer `create_loan`.
+- Borrower activation: Base USDC `approve` → Base `stakeCollateral` → GenLayer `activate_base_loan`.
+- Adjudication: GenLayer `trigger_covenant_check`, additive challenge evidence, and `finalize_covenant_check`.
+- Economics: Base `claimPrincipal`, `repay`, `cancel`, `settleMatured`, and `claimSettlement`.
+- Relay: the backend, not the browser, sends finalized decisions to Base and records the confirmed hash on GenLayer.
 
-**Connecting a wallet is not authentication.** `src/context/WalletContext.tsx`
-keeps the provider-connected `address` and the backend-authenticated
-`sessionAddress` as separate state. Signing in is a real SIWE round trip:
-`POST /auth/nonce` → `personal_sign` via the selected wallet's own
-EIP-1193 provider → `POST /auth/verify` → httpOnly session cookie. If the
-connected wallet's address stops matching the authenticated session address
-(account switch, disconnect), the session is treated as unauthenticated
-immediately — never a stale "signed in" state for the wrong address.
+Origination first compares Base and GenLayer loan counters. A mismatch stops the flow to avoid assigning one ID to unrelated records. Because the two-chain sequence is not atomic, confirmed hashes remain visible if a later step fails; recovery must use those confirmed records instead of blindly creating another loan.
 
-`src/components/WalletPicker.tsx` supplies the EIP-6963 chooser and
-`src/lib/walletProviders.ts` retains the selected provider across the flow.
+`src/lib/base.ts` contains Base chain switching, reads, ERC-20 approvals, and escrow writes. `src/lib/contract.ts` and `src/lib/genlayer.ts` contain GenLayer calls and finality handling. GenLayer writes require `FINALIZED` plus successful execution, not merely `ACCEPTED`.
 
-## Contract wiring
+## Current contracts
 
-`src/lib/contract.ts` mirrors `contracts/covenant_watch.py`'s public methods
-exactly: `create_loan`, `lock_collateral`, `claim_principal`,
-`trigger_covenant_check`, `submit_challenge_evidence`,
-`finalize_covenant_check`, `repay_loan`, `settle_matured_loan`, the safe
-backward-compatible `reclaim_collateral_timeout`, `cancel_loan`,
-`claim_settlement`, plus every `@gl.public.view`. Two details
-worth knowing if you touch this file:
-
-- `create_loan`'s `covenants_json` array items take a plain `threshold`
-  float — the contract scales it internally (`_scale()`), the frontend
-  never pre-scales it.
-- Every loan/covenant/check view already returns `status` as the
-  human-readable string the contract itself emits (e.g. `"BREACH_TIER1"`,
-  `"INCONCLUSIVE"`) — never a raw int to decode client-side.
-
-`src/lib/genlayer.ts` wraps the real `genlayer-js` client
-(`createClient`, `readContract`, `writeContract`,
-`waitForTransactionReceipt`). `src/lib/tx.ts` drives every write through
-`submitted → pending → finalized/failed` off the SDK's own transaction
-status enum, explicitly requesting `FINALIZED` instead of the SDK's
-`ACCEPTED` default and requiring `FINISHED_WITH_RETURN` so a finalized revert
-remains a failure — never a `setTimeout` standing in for real status.
-
-## Pages
-
-- `/` — landing page.
-- `/loans` — dashboard: backend-indexed loan list, a per-loan Collateral
-  Health Gauge, KPI row (total escrowed, loan count, in-grace count,
-  breached count), and status filter tabs.
-- `/loans/new` — full covenant-builder form: per-covenant source
-  type/three-publisher URL set/condition/operator/threshold, SSRF-protected
-  informational previews via `/covenants/preview-source`, distinct-hostname
-  enforcement, client-side
-  vague-condition-phrase rejection mirroring the contract's own
-  `VAGUE_CONDITION_FRAGMENTS` list, a bounded challenge-window slider, and a
-  pre-deployment summary card.
-- `/loans/[id]` — loan detail and every lifecycle action (lock collateral,
-  claim principal, repay, cancel, permissionless maturity settlement, claim
-  settlement), each gated by contract state, with contract-clock-synchronized
-  countdowns and finalized one-shot actions disabled. Principal claim remains
-  disabled until `can_claim_principal` confirms every covenant's latest check
-  is finalized `COMPLIANT`. Drawn/unpaid loans
-  default after maturity grace; undrawn loans unwind both escrows.
-- `/loans/[id]/covenants/[covenantId]/check` — trigger a covenant check
-  (respecting the real on-chain cooldown via `get_cooldown_remaining`),
-  with a Pinned Snapshot Hash display, a Validator Consensus Split Meter
-  fed from the transaction receipt's consensus data, and distinct
-  INCONCLUSIVE-state treatment. Cooldown and challenge-window actions are
-  disabled by live countdowns that mirror contract-enforced timestamps.
-- `/loans/[id]/covenants/[covenantId]/challenge` — additive-only evidence
-  submission during an open challenge window; the form has no field that
-  can edit or replace the original pinned source set or prior evidence. The
-  contract accumulates three distinct evidence hosts before reevaluation.
-- `/history` — cross-loan check/challenge history from the backend cache.
-- `/profile` — session address and the connected user's loans by role.
-- `/settings` — network/contract/backend health, sign-out, and an explicit
-  list of what's deferred (out of v1 scope) rather than faked.
-
-## Environment variables
-
-See `.env.example`:
-
-```
-NEXT_PUBLIC_CONTRACT_ADDRESS      # deployed contract address
-NEXT_PUBLIC_GENLAYER_NETWORK      # localnet | studionet | testnetAsimov | testnetBradbury | mainnet
-NEXT_PUBLIC_BACKEND_URL           # FastAPI backend base URL (read cache + auth only)
-NEXT_PUBLIC_GENLAYER_EXPLORER_URL # https://explorer-studio.genlayer.com/
+```text
+NEXT_PUBLIC_CONTRACT_ADDRESS=0xb86d1525014c80F98E7f0C3Be2af60AF3ab761F8
+NEXT_PUBLIC_GENLAYER_NETWORK=studionet
+NEXT_PUBLIC_BASE_USDC_ADDRESS=0x036CbD53842c5426634e7929541eC2318f3dCF7e
+NEXT_PUBLIC_BASE_ESCROW_ADDRESS=0x6b806484E938E8Bf5eD65D1841543931240834ef
+NEXT_PUBLIC_BACKEND_URL=https://covenant-watch-api.fly.dev
 ```
 
-All `NEXT_PUBLIC_*` variables are safe to ship to the browser bundle by
-design — a public contract address, network name, API base URL, explorer
-URL, and public chain configuration, nothing secret.
+All `NEXT_PUBLIC_*` values are public configuration. No private key belongs in the frontend environment.
 
-## Local development
+## Routes
+
+- `/loans` renders only backend-indexed loans and live Base enrichment; there are no checked-in verified-loan cards.
+- `/loans/new` creates the paired Base/GenLayer loan and shows each transaction stage.
+- `/loans/[id]` exposes role- and state-appropriate Base lifecycle actions.
+- Covenant check and challenge routes submit only GenLayer adjudication calls.
+- `/history`, `/profile`, and `/settings` use the indexed API and current public configuration.
+
+Both current contracts started at zero loans. No live E2E loan has been submitted to them, so an empty `/loans` page is expected until user acceptance creates one.
+
+## Local development and verification
 
 ```bash
+cd frontend
 npm install
 cp .env.example .env.local
-# defaults already point at the live deployed contract
-# (0xb86d1525014c80F98E7f0C3Be2af60AF3ab761F8, studionet) — only
-# NEXT_PUBLIC_BACKEND_URL needs to match wherever
-# you're running backend/ (default http://localhost:8000)
-
-npm run dev      # requires Node >=20.9
-npm run build    # production build
+npm run dev
 npm run lint
+npx tsc --noEmit
+npm run build -- --webpack
 ```
 
-## Tests / verification
+There is no dedicated component-test suite. Lint, type checking, and a production build are the current local verification baseline. Browser-wallet approvals, cross-network switching, USDC movement, GenLayer finality, and relay remain live acceptance checks; the old E2E receipts do not prove the fresh deployments.
 
-There is no dedicated component test suite. The current verification baseline
-is ESLint, `tsc --noEmit`, and a complete Next.js production build. The
-separate StudioNet harness exercised real `genlayer-js` writes, finalized
-receipts, validator consensus, immediate state rereads, repayment, and
-settlement against the production contract. Browser-wallet approval remains a
-manual UI check because automation uses unlocked test accounts rather than a
-wallet extension.
-
-## Deployment
-
-Deployed to Vercel (project `covenant-watch`). See the repo-root
-[`DEPLOYMENT.md`](../DEPLOYMENT.md) §4 for the full Vercel deploy steps and
-required production environment variables.
+Deploy from this directory with `vercel --prod --yes`. The current production deployment ID is `dpl_BG3fddp9AQWHYgTYFpESUZ8fJJ8J`.

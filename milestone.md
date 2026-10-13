@@ -1,69 +1,80 @@
-# Covenant Watch milestone — Base Sepolia USDC + GenLayer adjudication
+# Covenant Watch milestone: Base Sepolia USDC and GenLayer adjudication
 
 Completed 13 October 2026.
 
-## Delivered architecture
+## Outcome
 
-- **Base Sepolia is the value layer.** `CovenantWatchEscrow.sol` holds Circle test USDC, escrows principal, stakes collateral, accepts repayment, creates pull-based claims, and applies finalized breach consequences.
-- **GenLayer is adjudication only.** `covenant_watch.py` stores covenant definitions, independently evaluates pinned public sources with validator consensus, accepts additive challenge evidence, and finalizes results. It has no payable write and no outbound transfer primitive.
-- **The relay is narrow and replay-safe.** The backend submits `(loanId, checkId, decision, tier1StepBps, tier2SeizureBps)` to Base. Only the configured relayer is accepted, and repeated `(loanId, checkId)` submissions revert.
+The milestone separates economic execution from intelligent adjudication. Base Sepolia is the only value layer, and GenLayer StudioNet is used only to decide covenant outcomes. The backend connects the chains through a narrow decision relay, while users authorize every loan and USDC action with their own browser wallet.
 
-This follows the Meme Olympics chain split, adapted to Covenant Watch's loan state machine.
+## Deployed system
 
-## Live deployments
-
-| Component | Address / transaction |
+| Component | Address or transaction |
 |---|---|
 | Base Sepolia escrow | `0x6b806484E938E8Bf5eD65D1841543931240834ef` |
-| Base deployment tx | `0x7240cc53bb05537aee0ced6675a4760d14204bbdd205676e2b1b8c34c44b5d1f` |
+| Base deployment transaction | `0x7240cc53bb05537aee0ced6675a4760d14204bbdd205676e2b1b8c34c44b5d1f` |
+| Base owner/deployer | `0x7401c129EDfc26E68FE19309fE461eb3Db1058Eb` |
 | Dedicated Base relayer | `0x35F5ea45122eE7Dd5Ec6aA6aab961E9147e3e9e8` |
-| Relayer funding tx | `0xd2088bc32f7cf7143b0e5f44060fc2e0eacdb55fa58264e50d885b031bfdec34` |
-| Base Sepolia USDC | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` |
+| Relayer funding transaction | `0xd2088bc32f7cf7143b0e5f44060fc2e0eacdb55fa58264e50d885b031bfdec34` |
+| Circle Base Sepolia USDC | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` |
 | GenLayer adjudicator | `0xb86d1525014c80F98E7f0C3Be2af60AF3ab761F8` |
-| GenLayer deployment tx | `0x15aeb14989c76229ad0e409cb5affdbafea1aca643eef0113eafd5aecf3a4d9b` |
+| GenLayer deployment transaction | `0x15aeb14989c76229ad0e409cb5affdbafea1aca643eef0113eafd5aecf3a4d9b` |
+| Frontend | https://covenant-watch.vercel.app |
+| Backend | https://covenant-watch-api.fly.dev |
 
-The GenLayer deployment reached `FINALIZED`, executed successfully, and received five `AGREE` validator votes in one round. Both new contracts start with zero loans; no E2E loan was created after this redeployment, per the user's request.
+The GenLayer deployment finalized successfully with five `AGREE` votes. Direct read-only checks showed zero loans on both contracts, and the production API returned `[]` from `/loans`. No live E2E loan was created after redeployment, by request; the current deployment therefore has no claimed transaction-flow proof beyond deployment and read-only verification.
 
-## Implementation
+## Base Sepolia work
 
-The Base contract provides `createLoan`, `stakeCollateral`, `applyDecision`, `claimPrincipal`, exact `repay`, maturity settlement, cancellation, and pull-based `claimSettlement`. Principal remains locked until the required number of unique compliant GenLayer decisions have been relayed. It includes non-reentrancy, checks-effects-interactions, an immutable USDC address, a rotatable relayer, and per-check replay protection.
+`contracts/base/CovenantWatchEscrow.sol` now owns all USDC economics:
 
-Native GEN escrow and all payout functions were removed from GenLayer. `create_loan` records six-decimal USDC terms without call value. `activate_base_loan` and `mark_decision_relayed` store Base transaction hashes only. Evidence fetching, structured validator equivalence, challenges, and finalization remain on GenLayer.
+- lender principal enters through `createLoan` after ERC-20 approval;
+- borrower collateral enters through `stakeCollateral` after approval;
+- `claimPrincipal` releases principal only after enough unique compliant decisions;
+- `repay` pulls the exact principal-plus-interest amount;
+- `cancel` and `settleMatured` resolve expired or terminal positions;
+- `claimSettlement` uses pull payments for credited balances;
+- `applyDecision` accepts only the configured relayer and prevents replay by `(loanId, checkId)`;
+- first and second breaches apply interest step-up and partial seizure, while the third produces terminal default.
 
-Backend configuration now includes Base RPC, escrow, USDC, and relayer settings. `base_sepolia.py` supplies authoritative Base reads and the sole decision-relay write; `GET /loans/{id}/base` exposes live payment state.
+The contract uses six-decimal USDC amounts, checks-effects-interactions, and a non-reentrancy guard around token movement. Owner and relayer rotation are explicit administrative functions.
 
-The frontend now originates via USDC approval + Base escrow creation before registering covenant terms on GenLayer. Collateral, draw, repayment, and settlement use Base; checks and challenges use GenLayer. Monetary labels use six-decimal USDC. `/loans` renders only backend-indexed GenLayer loans; the former checked-in scenario cards were removed.
+## GenLayer work
 
-## Historical end-to-end scenarios
+`contracts/covenant_watch.py` is adjudication-only. `create_loan` records the paired Base loan ID, six-decimal economic terms, immutable source configuration, consequence parameters, and challenge window without receiving value. `activate_base_loan` records the confirmed staking transaction. Checks use validator consensus over independently fetched evidence, challenges are additive, and `finalize_covenant_check` makes a result relayable after the challenge window. `mark_decision_relayed` records the confirmed Base receipt.
 
-The three scenarios below were executed against the previous milestone deployments. They are retained as historical evidence only and are not present on the current fresh contracts.
+Native GEN escrow, repayment, and settlement are not part of the GenLayer contract. An `ACCEPTED` transaction is not treated as complete; application code waits for `FINALIZED` and successful execution.
 
-1. **Compliant repayment (loan 0):** created and activated on GenLayer, adjudicated compliant, relayed to Base, drawn, repaid with 5% interest, and settled.
-2. **Compliant draw-ready (loan 1):** created and activated on both chains, adjudicated compliant on GenLayer, and unlocked on Base while principal and collateral remain escrowed.
-3. **Independent repeat (loan 2):** a distinct borrower and check prove the same full create → activate → adjudicate → relay path is repeatable and replay-safe.
+## Backend work
 
-GenLayer check transactions: `0x6ee763cb8e1614da34081686a7bf462d5a906209affd9417f858e3534aecc03a`, `0x742e009be17797ff6376f4b9d095901e45ad8893a3c2ef5f620f7878d3948dd1`, and `0x465cbdc4686bbf2de1ba38fb811472ee6e404bc83f417ac03122b11edf28504e`. Base relay transactions: `0x51e496c607b9c6c12c81e3436bce8e9231b6714d43be59790db56944fac68a48`, `0x4b2427c6e54be35f8d5ce02b6f2a3e0cd0f1fc3e19e8f77b27e54a7bc282b05f`, and `0x1ade36c02c6653a779da91bdc554c6834b433aaa28ace2b2f8e84c4b5d858823`.
+The FastAPI service remains the non-authoritative index, SIWE session service, and protected URL-preview service. It also has one funded capability: the dedicated Base Sepolia relayer key. The indexer reads finalized GenLayer checks, submits only their mapped decision and immutable consequence values to Base, waits for confirmation, and records the Base hash on GenLayer. It cannot move user funds through origination, staking, draw, repayment, or settlement functions.
 
-The matching Foundry suite passes 3/3. Backend tests pass 17/17, the Solidity build succeeds, and the Next.js production build completes.
+Production configuration points to both fresh contracts. The relayer key is stored only as the Fly secret `BASE_RELAYER_PRIVATE_KEY`; the private key is not documented or committed.
 
-## Operations and security
+## Frontend work
 
-- The supplied wallet was used only as the throwaway testnet deployer and to authorize the dedicated relayer. Its private key is not committed or stored by the application.
-- Fly stores a separate randomly generated `BASE_RELAYER_PRIVATE_KEY` as an encrypted production secret. Only its public address is documented.
-- Base and GenLayer loan IDs are synchronized from fresh deployments.
-- Relay only after GenLayer finality. Failed submissions may retry; successful submissions are rejected on replay.
+Reown and wagmi were removed. Wallets are discovered directly with EIP-6963, and the user explicitly selects a provider when more than one is installed. The same EIP-1193 provider handles SIWE, Base Sepolia, and GenLayer operations.
 
-## Verification
+Origination now exposes distinct steps for USDC approval, Base principal escrow, and GenLayer registration. The application switches and verifies the network at each boundary. Borrower activation similarly approves and stakes USDC on Base before recording the Base transaction on GenLayer. Loan detail actions use Base for draw, repayment, maturity, and settlement; covenant checks and challenges remain on GenLayer.
 
-The production wallet flow uses one directly selected EIP-6963 browser wallet and
-automatically switches Base Sepolia → GenLayer StudioNet during origination.
-It verifies the wallet's actual chain after each switch and presents the USDC
-approval, principal escrow, and GenLayer registration as distinct transaction
-steps. The borrower collateral action performs the inverse Base → GenLayer
-handoff after the Base staking receipt confirms.
+The `/loans` route contains no hard-coded verified-loan cards. It displays only data indexed from the configured GenLayer deployment and enriches that data with Base state. A counter-consistency guard prevents origination when the fresh Base and GenLayer loan counters do not match.
 
-```bash
-forge test -vv
-backend/.venv/bin/pytest -q backend/tests
-cd frontend && npm run lint && npx tsc --noEmit && npm run build -- --webpack
-```
+## Verification and acceptance status
+
+- Base deployment receipt: confirmed.
+- Base constructor configuration and zero loan count: read directly.
+- GenLayer deployment receipt: successful and finalized with five agreeing validators.
+- GenLayer zero loan count: read directly.
+- Fly service: healthy and configured for the fresh address pair.
+- Vercel production deployment: `dpl_BG3fddp9AQWHYgTYFpESUZ8fJJ8J`.
+- Local Foundry escrow suite: 3 passed, 0 failed.
+- Backend pytest suite: 17 passed, 0 failed.
+- Frontend ESLint, TypeScript checking, and production build: passed.
+- Live paired-chain E2E on these addresses: **not run**; reserved for user acceptance.
+
+The optional live runner remains in `tests/e2e/cross_chain_live.py`, but its historical receipts are intentionally not presented as proof for the current deployments.
+
+## Source comparison
+
+The milestone starts at commit `59098877f02507ee4b57f79a1edfb01aa667f792`. The current comparison is:
+
+https://github.com/zoefunds/Covenant-watch/compare/59098877f02507ee4b57f79a1edfb01aa667f792...main

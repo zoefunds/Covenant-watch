@@ -1,14 +1,17 @@
 # Base Sepolia payment contract
 
-`CovenantWatchEscrow.sol` is Covenant Watch's only value-bearing contract. It
-escrows the lender's USDC principal, stakes the borrower's USDC collateral,
-accepts repayment, and exposes pull-based settlement claims. GenLayer never
-holds funds: the relayer can only submit finalized adjudication results through
-`applyDecision`, with `(loanId, checkId)` replay protection.
+`CovenantWatchEscrow.sol` is Covenant Watch's only value-bearing contract. It escrows lender principal, stakes borrower collateral, accepts exact repayment, applies finalized adjudication decisions, and exposes pull-based settlement claims. GenLayer never holds funds.
 
-- Network: Base Sepolia (`84532`)
-- USDC: `0x036CbD53842c5426634e7929541eC2318f3dCF7e`
-- Amounts: USDC base units (6 decimals)
+## Current deployment
 
-Compile with `forge build`. Deployment and verified addresses are recorded in
-the root `DEPLOYMENT.md` and `milestone.md`.
+- Network: Base Sepolia, chain ID `84532`
+- Contract: `0x6b806484E938E8Bf5eD65D1841543931240834ef`
+- Deployment transaction: `0x7240cc53bb05537aee0ced6675a4760d14204bbdd205676e2b1b8c34c44b5d1f`
+- Circle test USDC: `0x036CbD53842c5426634e7929541eC2318f3dCF7e`
+- Relayer: `0x35F5ea45122eE7Dd5Ec6aA6aab961E9147e3e9e8`
+- Amount units: USDC base units with 6 decimals
+- Initial/current documented loan count: `0`
+
+The relayer can only call `applyDecision`; `(loanId, checkId)` replay protection prevents the same adjudication from being applied twice. User wallets call all value-moving lifecycle functions directly.
+
+Build and test locally with `forge build` and `forge test -vv`. See root `DEPLOYMENT.md` for deployment and acceptance procedures. No live E2E loan has been run on the current address.
