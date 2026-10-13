@@ -90,4 +90,4 @@ The acceptance runner is `tests/e2e/security_acceptance.py`; it uses no committe
 
 The last awarded baseline is commit `e054b6fc629be61f365d6aa83601a3dabc8033ca`. The current comparison is:
 
-https://github.com/zoefunds/Covenant-watch/compare/e054b6fc629be61f365d6aa83601a3dabc8033ca...main
+https://github.com/zoefunds/Covenant-watch/compare/e054b6fc629be61f365d6aa83601a3dabc8033ca...f3bd86d600244b8aa07e62090484853d1cf1b30f
