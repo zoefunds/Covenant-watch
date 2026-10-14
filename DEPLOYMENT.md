@@ -6,12 +6,13 @@ Last verified: 13 October 2026.
 
 | Component | Value |
 |---|---|
-| GenLayer StudioNet adjudicator | `0x1EC71Df45C68F9F52A155DbBC8def172B00819C4` |
-| GenLayer deployment transaction | `0x375f98f42157f8e3cf941074036f2d26cc140c3fae02b3a1233d630fbca60ffa` |
-| Base Sepolia escrow | `0x37913648E096a6E8e97A2f5F31473e31c90c2Fb2` |
-| Base deployment transaction | `0x3ffd97e520394dc4577420b3df987711bb857f8a305e7868fc6674075dfd8dfb` |
+| GenLayer StudioNet adjudicator | `0x1b4BA5Fe8894648E4B90d80f2DA5d53880CcfD7b` |
+| GenLayer deployment transaction | `0x9698a8fa9f6db79cbcda2a0986243d4b60f0f993003049864bdccf7f0aa0634a` |
+| Base Sepolia escrow | `0xbF8F70Db480d003Dd6c5629c50b1f9Bf3Adc9E9b` |
+| Base deployment transaction | `0x1690edbcf6b5a519ac5c574235579e88a966185f3596251dffc33691b6e9df68` |
 | Base owner/deployer | `0x7401c129EDfc26E68FE19309fE461eb3Db1058Eb` |
-| Dedicated Base relayer | `0x7401c129EDfc26E68FE19309fE461eb3Db1058Eb` |
+| Dedicated Base relayer | `0x19E7E376E7C213B7E7e7e46cc70A5dD086DAff2A` |
+| Decision signer | `0x7401c129EDfc26E68FE19309fE461eb3Db1058Eb` |
 | Relayer funding transaction | `0xd2088bc32f7cf7143b0e5f44060fc2e0eacdb55fa58264e50d885b031bfdec34` |
 | Circle Base Sepolia USDC | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` |
 | Frontend | https://covenant-watch.vercel.app |
@@ -41,7 +42,7 @@ forge create contracts/base/CovenantWatchEscrow.sol:CovenantWatchEscrow \
   0x036CbD53842c5426634e7929541eC2318f3dCF7e "$RELAYER_ADDRESS"
 ```
 
-Record the address and receipt, then read `owner`, `relayer`, `usdc`, and `loanCount` directly. The constructor must point to Circle's Base Sepolia USDC and a dedicated relayer address.
+Record the address and receipt, then read `owner`, `relayer`, `decisionSigner`, `genLayerContract`, `usdc`, and `loanCount` directly. The constructor must point to Circle's Base Sepolia USDC, the dedicated relayer and signer, and the exact GenLayer deployment used in the attestation domain.
 
 ## 3. Deploy GenLayer StudioNet
 
@@ -59,21 +60,21 @@ Do not wire the address until the deployment receipt is `FINALIZED` and executio
 Backend production secrets/configuration:
 
 ```text
-CONTRACT_ADDRESS=0x1EC71Df45C68F9F52A155DbBC8def172B00819C4
+CONTRACT_ADDRESS=0x1b4BA5Fe8894648E4B90d80f2DA5d53880CcfD7b
 GENLAYER_NETWORK=studionet
 BASE_SEPOLIA_RPC_URL=https://sepolia.base.org
 BASE_USDC_ADDRESS=0x036CbD53842c5426634e7929541eC2318f3dCF7e
-BASE_ESCROW_ADDRESS=0x37913648E096a6E8e97A2f5F31473e31c90c2Fb2
+BASE_ESCROW_ADDRESS=0xbF8F70Db480d003Dd6c5629c50b1f9Bf3Adc9E9b
 BASE_RELAYER_PRIVATE_KEY=<Fly secret; never commit>
 ```
 
 Frontend build variables:
 
 ```text
-NEXT_PUBLIC_CONTRACT_ADDRESS=0x1EC71Df45C68F9F52A155DbBC8def172B00819C4
+NEXT_PUBLIC_CONTRACT_ADDRESS=0x1b4BA5Fe8894648E4B90d80f2DA5d53880CcfD7b
 NEXT_PUBLIC_GENLAYER_NETWORK=studionet
 NEXT_PUBLIC_BASE_USDC_ADDRESS=0x036CbD53842c5426634e7929541eC2318f3dCF7e
-NEXT_PUBLIC_BASE_ESCROW_ADDRESS=0x37913648E096a6E8e97A2f5F31473e31c90c2Fb2
+NEXT_PUBLIC_BASE_ESCROW_ADDRESS=0xbF8F70Db480d003Dd6c5629c50b1f9Bf3Adc9E9b
 NEXT_PUBLIC_BACKEND_URL=https://covenant-watch-api.fly.dev
 NEXT_PUBLIC_GENLAYER_EXPLORER_URL=https://explorer-studio.genlayer.com/
 ```
@@ -88,7 +89,7 @@ For live acceptance, verify every receipt in its explorer and confirm actual USD
 
 ## 6. Relay operation
 
-The indexer considers only finalized GenLayer checks. It maps the outcome to the Base enum, submits `applyDecision`, waits for the Base receipt, and records the Base hash with `mark_decision_relayed`. Base enforces relayer authorization and per-check replay protection. Retry a failed relay only after checking chain state; never resubmit a confirmed relay.
+The indexer considers only finalized GenLayer checks. It maps the outcome to the Base enum, signs the contract/chain/GenLayer/loan/check/covenant/decision/commitment/deadline payload, submits `applyDecision`, waits for the Base receipt, and records the Base hash with `mark_decision_relayed`. Base enforces relayer authorization, signer recovery, expiry, frozen commitments, and per-check replay protection. Retry a failed relay only after checking chain state; never resubmit a confirmed relay.
 
 ## 7. Rollback
 

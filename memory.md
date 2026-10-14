@@ -9,13 +9,14 @@ This file records current state only. Retired addresses, old transaction demonst
 | Component | Current value |
 |---|---|
 | GenLayer network | StudioNet |
-| GenLayer adjudicator | `0x1EC71Df45C68F9F52A155DbBC8def172B00819C4` |
-| GenLayer deployment transaction | `0x375f98f42157f8e3cf941074036f2d26cc140c3fae02b3a1233d630fbca60ffa` |
+| GenLayer adjudicator | `0x1b4BA5Fe8894648E4B90d80f2DA5d53880CcfD7b` |
+| GenLayer deployment transaction | `0x9698a8fa9f6db79cbcda2a0986243d4b60f0f993003049864bdccf7f0aa0634a` |
 | Base network | Base Sepolia, chain ID `84532` |
-| Base escrow | `0x37913648E096a6E8e97A2f5F31473e31c90c2Fb2` |
-| Base deployment transaction | `0x3ffd97e520394dc4577420b3df987711bb857f8a305e7868fc6674075dfd8dfb` |
+| Base escrow | `0xbF8F70Db480d003Dd6c5629c50b1f9Bf3Adc9E9b` |
+| Base deployment transaction | `0x1690edbcf6b5a519ac5c574235579e88a966185f3596251dffc33691b6e9df68` |
 | Circle test USDC | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` |
-| Base relayer | `0x7401c129EDfc26E68FE19309fE461eb3Db1058Eb` |
+| Base relayer | `0x19E7E376E7C213B7E7e7e46cc70A5dD086DAff2A` |
+| Decision signer | `0x7401c129EDfc26E68FE19309fE461eb3Db1058Eb` |
 | Frontend | https://covenant-watch.vercel.app |
 | Vercel project / deployment | `covenant-watch` / `dpl_BG3fddp9AQWHYgTYFpESUZ8fJJ8J` |
 | Backend | https://covenant-watch-api.fly.dev |

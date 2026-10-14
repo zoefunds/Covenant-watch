@@ -4,10 +4,10 @@ Last updated: 13 October 2026.
 
 ## Current trust boundary
 
-- Base Sepolia contract `0x37913648E096a6E8e97A2f5F31473e31c90c2Fb2` is the sole authority for USDC custody, draw eligibility, repayment, breach consequences, maturity, and settlement.
-- GenLayer contract `0x1EC71Df45C68F9F52A155DbBC8def172B00819C4` is the authority for covenant definitions, evidence evaluation, challenges, and finalized adjudication. It does not custody value.
+- Base Sepolia contract `0xbF8F70Db480d003Dd6c5629c50b1f9Bf3Adc9E9b` is the sole authority for USDC custody, draw eligibility, repayment, breach consequences, maturity, and settlement.
+- GenLayer contract `0x1b4BA5Fe8894648E4B90d80f2DA5d53880CcfD7b` is the authority for covenant definitions, evidence evaluation, challenges, and finalized adjudication. It does not custody value.
 - Browser wallets directly authorize loan creation, collateral staking, principal draw, repayment, and claims. The backend cannot initiate those user actions.
-- The backend holds a dedicated Base relayer key. Its authority is restricted by the Base contract to `applyDecision`; it cannot transfer arbitrary user USDC. This key remains a sensitive production secret and should be rotated if exposed.
+- The backend holds separate Base relayer and decision-signer keys. Relayer authority is restricted to `applyDecision`, and the contract independently recovers the signer over a domain-bound, expiring payload before applying a decision. Neither credential can transfer arbitrary user USDC through lifecycle methods; both remain sensitive and should be rotated if exposed.
 - API cache data is eventually consistent and non-authoritative. Contract reads and contract-enforced preconditions remain the final safety boundary.
 
 ## Economic contract controls
@@ -16,7 +16,7 @@ Last updated: 13 October 2026.
 - ERC-20 transfers occur only through explicit escrow, stake, repay, and claim paths.
 - Token-moving functions use a non-reentrancy guard; settlement credits are zeroed before transfer.
 - Principal draw requires collateral and the configured number of unique compliant decisions.
-- Decision submissions are authorized by `relayer` and replay-protected by `(loanId, checkId)`.
+- Decision submissions require `relayer` authorization plus an unexpired `decisionSigner` attestation bound to the Base contract, chain, GenLayer deployment, loan/check/covenant identity, verdict, and frozen commitments; they are replay-protected by `(loanId, checkId)`.
 - Consequences progress across the loan: interest step-up, partial collateral seizure, then terminal default.
 - Exact repayment prevents partial-payment ambiguity. Permissionless maturity settlement resolves both undrawn and drawn-unpaid cases.
 - The owner can rotate the relayer and transfer ownership. Compromise of the owner can therefore replace the relayer; operational custody of the owner key is a material trust assumption.
@@ -46,15 +46,15 @@ Last updated: 13 October 2026.
 
 ## Current verification status
 
-- Remediation Base deployment transaction: `0x3ffd97e520394dc4577420b3df987711bb857f8a305e7868fc6674075dfd8dfb`.
-- Remediation GenLayer deployment transaction: `0x375f98f42157f8e3cf941074036f2d26cc140c3fae02b3a1233d630fbca60ffa`.
+- Remediation Base deployment transaction: `0x1690edbcf6b5a519ac5c574235579e88a966185f3596251dffc33691b6e9df68`.
+- Remediation GenLayer deployment transaction: `0x9698a8fa9f6db79cbcda2a0986243d4b60f0f993003049864bdccf7f0aa0634a`.
 - GenLayer deployment: finalized, successful, five agreeing validators.
 - Acceptance counters: three paired loans on both chains.
 - Production API list after acceptance: three live indexed loans.
 - Local Foundry escrow suite: 3 passed, 0 failed.
 - Backend pytest suite: 17 passed, 0 failed.
 - Frontend ESLint, TypeScript checking, and Next.js production build: passed.
-- Live acceptance completed on the remediation pair using separate lender and borrower wallets. It covered Base approvals, principal escrow, collateral staking, finalized GenLayer checks, forged relay rejection and recovery, three-covenant breach progression, challenge evidence, default withdrawal, repayment/settlement, and undrawn maturity settlement. Evidence was written to `/private/tmp/covenant-watch-security-acceptance.json`.
+- Live acceptance completed on the remediation pair using separate lender and borrower wallets. It covered Base approvals, principal escrow, collateral staking, finalized GenLayer checks, forged relay rejection and recovery, three-covenant breach progression, challenge evidence, default withdrawal, repayment/settlement, and undrawn maturity settlement. Evidence is checked in as `acceptance-evidence.json`.
 
 ## Residual risks
 

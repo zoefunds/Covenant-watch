@@ -52,6 +52,7 @@ class Settings(BaseSettings):
     BASE_USDC_ADDRESS: str = Field(default="0x036CbD53842c5426634e7929541eC2318f3dCF7e")
     # Relays finalized adjudication only. Never use a wallet holding user funds.
     BASE_RELAYER_PRIVATE_KEY: Optional[str] = Field(default=None)
+    DECISION_SIGNER_PRIVATE_KEY: Optional[str] = Field(default=None)
     # The indexer refreshes existing loans as well as discovering new ones.
     # Keep this deliberately slower than the frontend's REST polling: browser
     # refreshes never touch GenLayer RPC, while a chain pass may make several

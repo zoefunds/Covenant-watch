@@ -4,7 +4,7 @@ FastAPI, PostgreSQL, Redis, and an indexer/decision relayer for Covenant Watch. 
 
 ## Authority boundary
 
-The backend is non-custodial for user actions. Users approve USDC, create and fund loans, stake collateral, draw principal, repay, and claim directly from their browser wallets. The backend has one narrow funded role: it submits finalized GenLayer decisions to the configured Base escrow through `applyDecision`. Base independently checks the relayer address and rejects repeated `(loanId, checkId)` decisions.
+The backend is non-custodial for user actions. Users approve USDC, create and fund loans, stake collateral, draw principal, repay, and claim directly from their browser wallets. Its narrow funded role is to attest and relay finalized GenLayer decisions through `applyDecision`. Base verifies the relayer, a separate signer attestation bound to both contracts and the frozen commitments, its expiry, and `(loanId, checkId)` replay protection.
 
 The service provides:
 
@@ -47,11 +47,11 @@ GenLayer reads use `call_contract_view_budgeted`. Redis coordinates a fixed-wind
 Copy `.env.example` to `.env`. Current public values are:
 
 ```text
-CONTRACT_ADDRESS=0x1EC71Df45C68F9F52A155DbBC8def172B00819C4
+CONTRACT_ADDRESS=0x1b4BA5Fe8894648E4B90d80f2DA5d53880CcfD7b
 GENLAYER_NETWORK=studionet
 BASE_SEPOLIA_RPC_URL=https://sepolia.base.org
 BASE_USDC_ADDRESS=0x036CbD53842c5426634e7929541eC2318f3dCF7e
-BASE_ESCROW_ADDRESS=0x37913648E096a6E8e97A2f5F31473e31c90c2Fb2
+BASE_ESCROW_ADDRESS=0xbF8F70Db480d003Dd6c5629c50b1f9Bf3Adc9E9b
 BASE_RELAYER_PRIVATE_KEY=<secret; backend only>
 ```
 

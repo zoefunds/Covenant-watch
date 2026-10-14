@@ -1,70 +1,41 @@
 # Live remediation acceptance evidence
 
-Run date: 13 October 2026 (Base Sepolia and GenLayer StudioNet)
+Run completed 14 October 2026 against a fresh zero-loan deployment pair. The complete machine-readable record is checked in as [`acceptance-evidence.json`](./acceptance-evidence.json); it contains every Base receipt, USDC before/after balance, GenLayer transaction hash, validator vote, and final contract tuple.
 
-The run used separate wallets:
+## Deployment and identities
 
-- lender/relayer: `0x7401c129EDfc26E68FE19309fE461eb3Db1058Eb`
-- borrower: `0x19E7E376E7C213B7E7e7e46cc70A5dD086DAff2A`
-- USDC: `0x036CbD53842c5426634e7929541eC2318f3dCF7e`
-- Base escrow: `0x37913648E096a6E8e97A2f5F31473e31c90c2Fb2`
-- GenLayer adjudicator: `0x1EC71Df45C68F9F52A155DbBC8def172B00819C4`
+- Base escrow: [`0xbF8F70Db480d003Dd6c5629c50b1f9Bf3Adc9E9b`](https://sepolia.basescan.org/address/0xbF8F70Db480d003Dd6c5629c50b1f9Bf3Adc9E9b)
+- Base deployment: [`0x1690edbcf6b5a519ac5c574235579e88a966185f3596251dffc33691b6e9df68`](https://sepolia.basescan.org/tx/0x1690edbcf6b5a519ac5c574235579e88a966185f3596251dffc33691b6e9df68)
+- GenLayer adjudicator: [`0x1b4BA5Fe8894648E4B90d80f2DA5d53880CcfD7b`](https://explorer-studio.genlayer.com/address/0x1b4BA5Fe8894648E4B90d80f2DA5d53880CcfD7b)
+- GenLayer deployment: [`0x9698a8fa9f6db79cbcda2a0986243d4b60f0f993003049864bdccf7f0aa0634a`](https://explorer-studio.genlayer.com/transactions/0x9698a8fa9f6db79cbcda2a0986243d4b60f0f993003049864bdccf7f0aa0634a)
+- Circle Base Sepolia USDC: `0x036CbD53842c5426634e7929541eC2318f3dCF7e`
+- Lender/decision signer: `0x7401c129EDfc26E68FE19309fE461eb3Db1058Eb`
+- Borrower/relayer: `0x19E7E376E7C213B7E7e7e46cc70A5dD086DAff2A`
 
-The machine-readable artifact was generated at
-`/private/tmp/covenant-watch-security-acceptance.json`. It contains the active
-run's receipt status/block data, validator vote lists, contract tuple
-readbacks, and USDC balance snapshots. Loan 0 was resumed from its already
-confirmed onchain state and is identified as such in the artifact; its live
-GenLayer state is also recorded in the deployment readback.
+The GenLayer deployment finalized with five agreeing validators. The Base constructor permanently binds this GenLayer address and chain ID into its signed-decision domain.
 
-## Scenario 1 — compliant draw and repayment
+## Scenario 1 — compliant draw, repayment, and withdrawals
 
-Loan `0` was paired with commitment
-`0x40558e08bc2faa33c622be92e5e3403b683581763a1703984e13786d3b9ec99d`. The
-Base escrow received `1,000,000` USDC and the borrower staked `1,500,000` USDC.
-GenLayer read the three pinned publishers as `COMPLIANT` at
-`21,000,000.000000`, with validator consensus and a finalized check. The run
-rejected a forged relay commitment, then accepted the authentic relay. The
-borrower drew principal, repaid `1,050,000` USDC, the lender claimed repayment,
-and the borrower claimed collateral. Final Base status: `REPAID`; all escrow
-balances: zero.
+Loan `0` moved 1 USDC principal and 1.5 USDC collateral into escrow. GenLayer finalized a compliant decision. A deliberately forged relay was mined with status `0` ([receipt](https://sepolia.basescan.org/tx/0x0920ac6698742a032a54b0c3ef30b6b1d68691375dbe336d7cfa64c4ef51aeb4)); the authentic signed decision succeeded ([receipt](https://sepolia.basescan.org/tx/0x5b4bb7a40a98f6ece0485569a578eda1064eac6834606b9441268986dce354b8)). The borrower then drew principal, repaid exactly 1.05 USDC, and both parties withdrew their rightful settlements. Final status: `REPAID`; escrow balance: zero.
 
-## Scenario 2 — challenge and three-tier breach
+## Scenario 2 — challenge reconciliation and three-tier breach
 
-Loan `1` used three distinct covenant commitments. Base receipts prove the
-principal and collateral movements, followed by three relays:
+Loan `1` froze three distinct covenant identities and their consequence bounds. Three additional publisher URLs were submitted during the challenge process, but adjudication preserved and reconciled the original source set. Three separately finalized and authenticated breach decisions produced tier 1, tier 2, then terminal tier 3 default:
 
-- [relay 1](https://sepolia.basescan.org/tx/0xf7a985632aa2326ff61f9a492963da36e85e1379877627b591b9322c5598adb4)
-- [relay 2](https://sepolia.basescan.org/tx/0x690afb38f3f1f1f05297321a83526b0d53aba9a87b12c031beb79b00b82f2a3d)
-- [relay 3](https://sepolia.basescan.org/tx/0xfefc590a690870760a5322cee5a354c9a9b484bd38bb154edd61cd4a94fe0758)
+- [breach relay 1](https://sepolia.basescan.org/tx/0xee8ddc93b9e68bc3209a81869063e11fa1732fce6621c25a162a91ad2fc8e4af)
+- [breach relay 2](https://sepolia.basescan.org/tx/0xa330e98f1b388f72f22345de300c27b96ac151219e4d2ac7931043f4a3c39a84)
+- [breach relay 3](https://sepolia.basescan.org/tx/0x2d53b2c45bde943089c8d07cd7ce6f7a1eb6ee08cceb30eafcaf4f0cd9c89dd2)
 
-Each check independently corroborated the breach from three publishers. Three
-preauthorized challenge URLs were submitted to the first check; the original
-source commitment remained authoritative and the finding stayed `BREACH`.
-Final Base state was `DEFAULTED`, breach tier `3`, current interest `650` bps,
-and escrow balance `0` after the lender withdrawal.
+Final status: `DEFAULTED`; breach tier: `3`; bounded interest: `650` bps. The lender withdrew the terminal settlement and escrow returned to zero.
 
-## Scenario 3 — maturity settlement
+## Scenario 3 — undrawn maturity settlement
 
-Loan `2` received principal and collateral but no draw. After maturity plus its
-60-second settlement grace, anyone called `settleMatured`. The lender withdrew
-the undrawn `1,000,000` USDC principal and the borrower withdrew the full
-`1,500,000` USDC collateral. Final Base status: `TIMEOUT_RECLAIMED`; escrow
-balance: zero.
+Loan `2` escrowed principal and collateral but was never drawn. After maturity plus the 60-second grace period, permissionless settlement succeeded ([receipt](https://sepolia.basescan.org/tx/0xd81a6db9de4dd975a582da1179f45bc6f47f83b714cd25c4b22e1145e8f613e7)). The lender recovered 1 USDC principal and the borrower recovered 1.5 USDC collateral. Final status: `TIMEOUT_RECLAIMED`; escrow balance: zero.
 
-## GenLayer execution
+## Regression gates
 
-The GenLayer deployment finalized with five agreeing validators. Scenario 2
-produced finalized `create_loan`, `activate_base_loan`, three check triggers,
-three challenge submissions, three finalizations, and three
-`mark_decision_relayed` transactions. Scenario 3 produced finalized creation
-and activation transactions. The artifact records each transaction hash and
-its validator votes.
+- Foundry covers repeated same-covenant checks, drawdown/maturity boundaries, forged and excessive relays, mismatched commitments, replay, relay recovery, repayment, and settlement.
+- Backend/direct tests cover index, relay, API, and serialization behavior.
+- Frontend lint, TypeScript, and production build validate the browser-wallet flow and live indexed-loan rendering.
 
-## Local regression gates
-
-- Foundry: 9 passed, including distinct-covenant compliance, post-deadline
-  draw rejection, forged/excessive relay rejection, pairing mismatch, replay,
-  failed-relay recovery, repayment, and maturity settlement.
-- Backend/direct tests: 28 passed.
-- Frontend ESLint, TypeScript, and production build: passed.
+The runner is [`tests/e2e/security_acceptance.py`](./tests/e2e/security_acceptance.py). It reads private keys only from environment variables and never writes them into the evidence artifact.

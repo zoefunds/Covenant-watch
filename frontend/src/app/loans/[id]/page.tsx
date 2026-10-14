@@ -61,7 +61,8 @@ export default function LoanDetailPage() {
           getLoanCovenantsCached(loanId),
           getLoanChecksCached(loanId),
         ]);
-      } catch {
+      } catch (cacheError) {
+        if (!direct) throw cacheError;
         // The backend may not have indexed a just-created loan yet. Read the
         // same state directly from the contract until the cache catches up.
         [l, c, h] = await Promise.all([

@@ -16,13 +16,15 @@ import time
 from pathlib import Path
 
 from web3 import Web3
+from eth_account.messages import encode_defunct
+from eth_abi import encode
 
 U = 10**6
 BASE_RPC = os.getenv("BASE_SEPOLIA_RPC_URL", "https://sepolia.base.org")
 USDC = Web3.to_checksum_address("0x036CbD53842c5426634e7929541eC2318f3dCF7e")
 GENLAYER = os.environ["GENLAYER_CONTRACT_ADDRESS"]
 ESCROW_ADDRESS = Web3.to_checksum_address(os.environ["BASE_ESCROW_ADDRESS"])
-OUTPUT = Path(os.getenv("EVIDENCE_OUTPUT", "/private/tmp/covenant-watch-security-acceptance.json"))
+OUTPUT = Path(os.getenv("EVIDENCE_OUTPUT", "acceptance-evidence.json"))
 
 PRIMARY = [
     "https://en.wikipedia.org/wiki/Bitcoin",
@@ -124,6 +126,7 @@ def main() -> None:
     lender = w3.eth.account.from_key(os.environ["DEPLOYER_PRIVATE_KEY"])
     borrower = w3.eth.account.from_key(os.environ["BORROWER_PRIVATE_KEY"])
     relayer = w3.eth.account.from_key(os.environ.get("RELAYER_PRIVATE_KEY", os.environ["DEPLOYER_PRIVATE_KEY"]))
+    decision_signer = w3.eth.account.from_key(os.environ["DECISION_SIGNER_PRIVATE_KEY"])
     borrower_gen_account = os.environ.get("BORROWER_GEN_ACCOUNT", "cw-security-borrower-live")
     artifact = json.loads(Path("out/CovenantWatchEscrow.sol/CovenantWatchEscrow.json").read_text())
     escrow = w3.eth.contract(address=ESCROW_ADDRESS, abi=artifact["abi"])
@@ -135,13 +138,25 @@ def main() -> None:
                 "wallets": {"lender": lender.address, "borrower": borrower.address, "relayer": relayer.address},
                 "startedAt": int(time.time()), "scenarios": []}
 
-    def base_send(account, label: str, fn) -> dict:
+    def checkpoint() -> None:
+        OUTPUT.write_text(json.dumps(evidence, indent=2, default=lambda value: value.hex() if isinstance(value, bytes) else str(value)) + "\n")
+
+    def base_send(account, label: str, fn, *, expected_revert: bool = False) -> dict:
         before = {"lender": usdc.functions.balanceOf(lender.address).call(),
                   "borrower": usdc.functions.balanceOf(borrower.address).call(),
                   "escrow": usdc.functions.balanceOf(ESCROW_ADDRESS).call()}
+        try:
+            estimated = fn.estimate_gas({"from": account.address})
+        except Exception:
+            if not expected_revert:
+                raise
+            # A reverting call cannot be estimated. Broadcast it with a bounded
+            # limit so its failed receipt becomes durable negative-test evidence.
+            estimated = 500_000
         tx = fn.build_transaction({"from": account.address,
             "nonce": w3.eth.get_transaction_count(account.address, "pending"),
-            "chainId": 84532, "gas": 900_000, "gasPrice": int(os.getenv("BASE_GAS_PRICE_WEI", "1000000000"))})
+            "chainId": 84532, "gas": int(estimated * 1.25) + 10_000,
+            "gasPrice": int(os.getenv("BASE_GAS_PRICE_WEI", str(w3.eth.gas_price)))})
         tx_hash = w3.eth.send_raw_transaction(account.sign_transaction(tx).raw_transaction)
         receipt = w3.eth.wait_for_transaction_receipt(tx_hash, timeout=180)
         after = {"lender": usdc.functions.balanceOf(lender.address).call(),
@@ -167,6 +182,16 @@ def main() -> None:
         return {"name": name, "loanId": loan_id, "loanCommitment": "0x" + commitment.hex(),
                 "covenantCommitments": ["0x" + item.hex() for item in commits], "baseTransactions": txs,
                 "genlayerTransactions": gen}
+
+    def attested_decision(loan_id: int, check_id: int, covenant_index: int, decision: int, loan_commitment_hex: str, covenant_commitment_hex: str):
+        deadline = int(time.time()) + 600
+        payload = Web3.keccak(encode(
+            ["address","uint256","address","uint256","uint256","uint256","uint8","bytes32","bytes32","uint256"],
+            [ESCROW_ADDRESS, 84532, Web3.to_checksum_address(GENLAYER), loan_id, check_id, covenant_index, decision,
+             bytes.fromhex(loan_commitment_hex.removeprefix("0x")), bytes.fromhex(covenant_commitment_hex.removeprefix("0x")), deadline],
+        ))
+        signature = decision_signer.sign_message(encode_defunct(primitive=payload)).signature
+        return deadline, signature
 
     def mark_relayed(check_id: int, base_tx: dict, scenario: dict) -> None:
         scenario["genlayerTransactions"].append(
@@ -204,10 +229,11 @@ def main() -> None:
         time.sleep(310)
         compliant["genlayerTransactions"].append(gen_write("cw-milestone", "finalize_covenant_check", [0, 0]))
         # Relay once with a deliberately forged commitment (must revert), then recover with the authentic commitment.
-        forged = base_send(relayer, "forged relay rejected", escrow.functions.applyDecision(0, 0, 0, 0, b"\x01" * 32, bytes.fromhex(compliant["covenantCommitments"][0][2:])))
+        deadline, signature = attested_decision(0, 0, 0, 0, compliant["loanCommitment"], compliant["covenantCommitments"][0])
+        forged = base_send(relayer, "forged verdict rejected", escrow.functions.applyDecision(0, 0, 0, 1, bytes.fromhex(compliant["loanCommitment"][2:]), bytes.fromhex(compliant["covenantCommitments"][0][2:]), deadline, signature), expected_revert=True)
         if forged["status"] != 0: raise AssertionError("forged relay unexpectedly succeeded")
         compliant["baseTransactions"].append(forged)
-        relay = base_send(relayer, "relay compliant decision", escrow.functions.applyDecision(0, 0, 0, 0, bytes.fromhex(compliant["loanCommitment"][2:]), bytes.fromhex(compliant["covenantCommitments"][0][2:])))
+        relay = base_send(relayer, "relay authenticated compliant decision", escrow.functions.applyDecision(0, 0, 0, 0, bytes.fromhex(compliant["loanCommitment"][2:]), bytes.fromhex(compliant["covenantCommitments"][0][2:]), deadline, signature))
         compliant["baseTransactions"].append(relay)
         mark_relayed(0, relay, compliant)
     else:
@@ -220,6 +246,7 @@ def main() -> None:
         compliant["baseTransactions"].append(base_send(borrower, "borrower collateral withdrawal", escrow.functions.claimSettlement(0)))
     compliant["finalBaseState"] = list(escrow.functions.loans(0).call())
     evidence["scenarios"].append(compliant)
+    checkpoint()
 
     now = int(time.time())
     breach_covs = [covenant("<", f"Breach covenant {i + 1}: maximum supply must be below one.") for i in range(3)]
@@ -233,12 +260,14 @@ def main() -> None:
     while time.time() < wait_until: time.sleep(min(15, wait_until - time.time()))
     for check_id in (1, 2, 3):
         breach["genlayerTransactions"].append(gen_write("cw-milestone", "finalize_covenant_check", [1, check_id]))
-        relay = base_send(relayer, f"relay breach check {check_id}", escrow.functions.applyDecision(1, check_id, check_id - 1, 1, bytes.fromhex(breach["loanCommitment"][2:]), bytes.fromhex(breach["covenantCommitments"][check_id - 1][2:])))
+        deadline, signature = attested_decision(1, check_id, check_id - 1, 1, breach["loanCommitment"], breach["covenantCommitments"][check_id - 1])
+        relay = base_send(relayer, f"relay authenticated breach check {check_id}", escrow.functions.applyDecision(1, check_id, check_id - 1, 1, bytes.fromhex(breach["loanCommitment"][2:]), bytes.fromhex(breach["covenantCommitments"][check_id - 1][2:]), deadline, signature))
         breach["baseTransactions"].append(relay)
         mark_relayed(check_id, relay, breach)
     breach["baseTransactions"].append(base_send(lender, "lender default withdrawal", escrow.functions.claimSettlement(1)))
     breach["finalBaseState"] = list(escrow.functions.loans(1).call())
     evidence["scenarios"].append(breach)
+    checkpoint()
 
     now = int(time.time())
     matured = create_pair("undrawn maturity settlement and rightful withdrawals", [covenant("==", "Maturity scenario covenant remains unqueried.")], now + 180, now + 90, 60)
@@ -249,7 +278,7 @@ def main() -> None:
     matured["finalBaseState"] = list(escrow.functions.loans(2).call())
     evidence["scenarios"].append(matured)
     evidence["finishedAt"] = int(time.time())
-    OUTPUT.write_text(json.dumps(evidence, indent=2, default=lambda value: value.hex() if isinstance(value, bytes) else str(value)) + "\n")
+    checkpoint()
     print(OUTPUT)
 
 

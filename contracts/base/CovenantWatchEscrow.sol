@@ -47,6 +47,8 @@ contract CovenantWatchEscrow {
     IERC20 public immutable usdc;
     address public owner;
     address public relayer;
+    address public decisionSigner;
+    address public immutable genLayerContract;
     uint256 public loanCount;
     uint256 public constant BPS = 10_000;
     uint32 public constant MAX_INTEREST_STEP_UP_BPS = 5_000;
@@ -74,11 +76,13 @@ contract CovenantWatchEscrow {
     modifier onlyOwner() { require(msg.sender == owner, "not owner"); _; }
     modifier onlyRelayer() { require(msg.sender == relayer, "not relayer"); _; }
 
-    constructor(address usdc_, address relayer_) {
-        require(usdc_ != address(0) && relayer_ != address(0), "zero address");
+    constructor(address usdc_, address relayer_, address decisionSigner_, address genLayerContract_) {
+        require(usdc_ != address(0) && relayer_ != address(0) && decisionSigner_ != address(0) && genLayerContract_ != address(0), "zero address");
         usdc = IERC20(usdc_);
         owner = msg.sender;
         relayer = relayer_;
+        decisionSigner = decisionSigner_;
+        genLayerContract = genLayerContract_;
     }
 
     function computeLoanCommitment(
@@ -168,7 +172,9 @@ contract CovenantWatchEscrow {
         uint256 covenantIndex,
         Decision decision,
         bytes32 loanCommitment,
-        bytes32 covenantCommitment
+        bytes32 covenantCommitment,
+        uint256 attestationDeadline,
+        bytes calldata attestation
     ) external onlyRelayer {
         Loan storage loan = loans[loanId];
         require(loan.commitment == loanCommitment && loanCommitment != bytes32(0), "loan commitment mismatch");
@@ -178,6 +184,14 @@ contract CovenantWatchEscrow {
         require(!decisionRelayed[loanId][checkId], "decision already relayed");
         require(!terms.hasDecision || checkId > terms.lastCheckId, "stale covenant decision");
         require(loan.status == Status.Active || loan.status == Status.Tier1 || loan.status == Status.Tier2, "terminal loan");
+        require(block.timestamp <= attestationDeadline, "attestation expired");
+        bytes32 payload = keccak256(abi.encode(
+            address(this), block.chainid, genLayerContract, loanId, checkId,
+            covenantIndex, decision, loanCommitment, covenantCommitment,
+            attestationDeadline
+        ));
+        bytes32 signed = keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", payload));
+        require(_recover(signed, attestation) == decisionSigner, "invalid decision attestation");
 
         decisionRelayed[loanId][checkId] = true;
         terms.lastCheckId = checkId;
@@ -285,5 +299,16 @@ contract CovenantWatchEscrow {
     }
 
     function setRelayer(address next) external onlyOwner { require(next != address(0), "zero relayer"); relayer = next; emit RelayerUpdated(next); }
+    function setDecisionSigner(address next) external onlyOwner { require(next != address(0), "zero signer"); decisionSigner = next; }
     function transferOwnership(address next) external onlyOwner { require(next != address(0), "zero owner"); owner = next; }
+
+    function _recover(bytes32 digest, bytes calldata signature) private pure returns (address) {
+        require(signature.length == 65, "invalid signature length");
+        bytes32 r; bytes32 s; uint8 v;
+        assembly { r := calldataload(signature.offset) s := calldataload(add(signature.offset, 32)) v := byte(0, calldataload(add(signature.offset, 64))) }
+        if (v < 27) v += 27;
+        require(v == 27 || v == 28, "invalid signature v");
+        require(uint256(s) <= 0x7fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f46681b20a0, "invalid signature s");
+        return ecrecover(digest, v, r, s);
+    }
 }

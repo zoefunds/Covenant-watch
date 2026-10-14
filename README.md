@@ -12,10 +12,11 @@ Last verified: 13 October 2026.
 |---|---|
 | Frontend | https://covenant-watch.vercel.app |
 | Backend | https://covenant-watch-api.fly.dev |
-| GenLayer adjudicator | `0x1EC71Df45C68F9F52A155DbBC8def172B00819C4` |
-| Base Sepolia escrow | `0x37913648E096a6E8e97A2f5F31473e31c90c2Fb2` |
+| GenLayer adjudicator | `0x1b4BA5Fe8894648E4B90d80f2DA5d53880CcfD7b` |
+| Base Sepolia escrow | `0xbF8F70Db480d003Dd6c5629c50b1f9Bf3Adc9E9b` |
 | Circle Base Sepolia USDC | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` |
-| Base decision relayer | `0x7401c129EDfc26E68FE19309fE461eb3Db1058Eb` |
+| Base decision relayer | `0x19E7E376E7C213B7E7e7e46cc70A5dD086DAff2A` |
+| Decision signer | `0x7401c129EDfc26E68FE19309fE461eb3Db1058Eb` |
 
 Both contracts were freshly deployed for this remediation and the live acceptance run created three paired loans with real Base Sepolia USDC movement and finalized GenLayer transactions.
 
@@ -25,7 +26,7 @@ Both contracts were freshly deployed for this remediation and the live acceptanc
 2. The app switches to Base Sepolia, obtains USDC approval, and calls `createLoan`; the escrow pulls the principal from the lender.
 3. The app switches the same selected wallet to GenLayer StudioNet and calls `create_loan` with the matching loan ID and covenant definitions.
 4. The borrower approves USDC and calls `stakeCollateral` on Base, then records the confirmed Base transaction through `activate_base_loan` on GenLayer.
-5. Covenant checks and challenges execute only on GenLayer. Finalized decisions are relayed by the backend to Base through replay-protected `applyDecision`.
+5. Covenant checks and challenges execute only on GenLayer. Finalized decisions are attested over both contracts and the frozen loan/covenant commitments, then relayed through replay-protected `applyDecision`.
 6. Principal draw, exact repayment, maturity handling, and pull-based settlement claims execute only on Base Sepolia.
 
 ```text
@@ -41,7 +42,7 @@ There is no Reown or wagmi connector layer. The provider selected during EIP-696
 - `contracts/base/CovenantWatchEscrow.sol` is the only value-bearing contract.
 - `contracts/covenant_watch.py` performs adjudication and never holds funds.
 - The backend is a read cache, authentication service, URL-preview service, and narrow finalized-decision relayer. It cannot originate, stake, draw, repay, or claim a loan.
-- The Base contract rejects an unauthorized relayer and rejects a repeated `(loanId, checkId)` decision.
+- The Base contract rejects an unauthorized relayer, invalid or expired decision attestation, mismatched commitment or source-contract domain, excessive consequence, and repeated `(loanId, checkId)` decision.
 - Cached API data is non-authoritative. Contracts enforce all money-relevant state transitions.
 
 ## Repository

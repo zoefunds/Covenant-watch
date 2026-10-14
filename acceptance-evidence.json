@@ -1,0 +1,997 @@
+{
+  "contracts": {
+    "base": "0xbF8F70Db480d003Dd6c5629c50b1f9Bf3Adc9E9b",
+    "genlayer": "0x1b4BA5Fe8894648E4B90d80f2DA5d53880CcfD7b",
+    "usdc": "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
+  },
+  "wallets": {
+    "lender": "0x7401c129EDfc26E68FE19309fE461eb3Db1058Eb",
+    "borrower": "0x19E7E376E7C213B7E7e7e46cc70A5dD086DAff2A",
+    "relayer": "0x19E7E376E7C213B7E7e7e46cc70A5dD086DAff2A"
+  },
+  "startedAt": 1791935010,
+  "scenarios": [
+    {
+      "name": "compliant draw, repayment, and rightful withdrawals",
+      "loanId": 0,
+      "loanCommitment": "0x7bc7aca069fae6b7b12c9a719c8a75eaae9d9253cd6bd1464da1deaba1bab9d2",
+      "covenantCommitments": [
+        "0xc6bc48951f7221cd07af2a2ce352430b6d48dc6866b3c660de1a6e002cdd6498"
+      ],
+      "baseTransactions": [
+        {
+          "label": "approve principal",
+          "hash": "3ded27a6a1e5450b81cec9da082d95bdc9e3e8108bf687e301f46d68dc4d6414",
+          "status": 1,
+          "blockNumber": 48083365,
+          "usdcBefore": {
+            "lender": 3750000,
+            "borrower": 9433864,
+            "escrow": 0
+          },
+          "usdcAfter": {
+            "lender": 3750000,
+            "borrower": 9433864,
+            "escrow": 0
+          }
+        },
+        {
+          "label": "escrow principal",
+          "hash": "8530e9eb2abc8db89025d265808c9834e203c0294d81fc0a3507958f62447198",
+          "status": 1,
+          "blockNumber": 48083368,
+          "usdcBefore": {
+            "lender": 3750000,
+            "borrower": 9433864,
+            "escrow": 0
+          },
+          "usdcAfter": {
+            "lender": 3750000,
+            "borrower": 9433864,
+            "escrow": 1000000
+          }
+        },
+        {
+          "label": "approve collateral",
+          "hash": "3d78254bf24f8c44e90f4ea0ad8f55e6dfd516556bbdd7ac422ba45ad3fcbebc",
+          "status": 1,
+          "blockNumber": 48083392,
+          "usdcBefore": {
+            "lender": 2750000,
+            "borrower": 9433864,
+            "escrow": 1000000
+          },
+          "usdcAfter": {
+            "lender": 2750000,
+            "borrower": 9433864,
+            "escrow": 1000000
+          }
+        },
+        {
+          "label": "stake collateral",
+          "hash": "adae79d760826dd405d58769f6779f20b6c7b04db6eb41e3f999087947103cfc",
+          "status": 1,
+          "blockNumber": 48083395,
+          "usdcBefore": {
+            "lender": 2750000,
+            "borrower": 9433864,
+            "escrow": 1000000
+          },
+          "usdcAfter": {
+            "lender": 2750000,
+            "borrower": 7933864,
+            "escrow": 2500000
+          }
+        },
+        {
+          "label": "forged verdict rejected",
+          "hash": "0920ac6698742a032a54b0c3ef30b6b1d68691375dbe336d7cfa64c4ef51aeb4",
+          "status": 0,
+          "blockNumber": 48083685,
+          "usdcBefore": {
+            "lender": 2750000,
+            "borrower": 7933864,
+            "escrow": 2500000
+          },
+          "usdcAfter": {
+            "lender": 2750000,
+            "borrower": 7933864,
+            "escrow": 2500000
+          }
+        },
+        {
+          "label": "relay authenticated compliant decision",
+          "hash": "5b4bb7a40a98f6ece0485569a578eda1064eac6834606b9441268986dce354b8",
+          "status": 1,
+          "blockNumber": 48083688,
+          "usdcBefore": {
+            "lender": 2750000,
+            "borrower": 7933864,
+            "escrow": 2500000
+          },
+          "usdcAfter": {
+            "lender": 2750000,
+            "borrower": 7933864,
+            "escrow": 2500000
+          }
+        },
+        {
+          "label": "borrower draw",
+          "hash": "e1482f0b57c26a77a7b7c8d1a83d06059788de499b6c718deff089ba6eb8cddc",
+          "status": 1,
+          "blockNumber": 48083710,
+          "usdcBefore": {
+            "lender": 2750000,
+            "borrower": 7933864,
+            "escrow": 2500000
+          },
+          "usdcAfter": {
+            "lender": 2750000,
+            "borrower": 7933864,
+            "escrow": 1500000
+          }
+        },
+        {
+          "label": "approve repayment",
+          "hash": "9080dacdee422726ca46028a52c7f78878e4d8a91267806988718ac310407508",
+          "status": 1,
+          "blockNumber": 48083713,
+          "usdcBefore": {
+            "lender": 2750000,
+            "borrower": 8933864,
+            "escrow": 1500000
+          },
+          "usdcAfter": {
+            "lender": 2750000,
+            "borrower": 8933864,
+            "escrow": 1500000
+          }
+        },
+        {
+          "label": "exact repayment",
+          "hash": "e7c2e40b8b9b991828fcd4d65c82384376154bf4547a997b0b319063fa4f83a7",
+          "status": 1,
+          "blockNumber": 48083716,
+          "usdcBefore": {
+            "lender": 2750000,
+            "borrower": 8933864,
+            "escrow": 1500000
+          },
+          "usdcAfter": {
+            "lender": 2750000,
+            "borrower": 7883864,
+            "escrow": 2550000
+          }
+        },
+        {
+          "label": "lender withdrawal",
+          "hash": "cd6845f0e1d169b8cb2c2f989504f2c46f4aed4159bdf93e4fe9e2b4e8a55184",
+          "status": 1,
+          "blockNumber": 48083720,
+          "usdcBefore": {
+            "lender": 2750000,
+            "borrower": 7883864,
+            "escrow": 2550000
+          },
+          "usdcAfter": {
+            "lender": 2750000,
+            "borrower": 7883864,
+            "escrow": 1500000
+          }
+        },
+        {
+          "label": "borrower collateral withdrawal",
+          "hash": "38b9ff96d21a4ac684e06eae2a380b78609e069a2150fa44c097e208a137f466",
+          "status": 1,
+          "blockNumber": 48083723,
+          "usdcBefore": {
+            "lender": 3800000,
+            "borrower": 7883864,
+            "escrow": 1500000
+          },
+          "usdcAfter": {
+            "lender": 3800000,
+            "borrower": 9383864,
+            "escrow": 0
+          }
+        }
+      ],
+      "genlayerTransactions": [
+        {
+          "hash": "0x26b4c9f6f7f0fba50af048497283034709ecb2b8a0b8b52175cb9683454a6caf",
+          "method": "create_loan",
+          "successfulGenVm": true,
+          "validatorVotes": [
+            {
+              "validator": "0x14402D49f317CE1a2F35BAE01b1804A2A9703dCb",
+              "vote": "AGREE"
+            },
+            {
+              "validator": "0x36728d2a123aB444E603EE5b2ad17d18Bb193557",
+              "vote": "AGREE"
+            },
+            {
+              "validator": "0x3E5ee2507cc167C9925Bf10c67D7986581112024",
+              "vote": "AGREE"
+            }
+          ]
+        },
+        {
+          "hash": "0xef1d4fad45668a919d9df319f701d368103f3b456c8a70de2eee35e5315788ca",
+          "method": "activate_base_loan",
+          "successfulGenVm": true,
+          "validatorVotes": [
+            {
+              "validator": "0x4404Fb70d490c935758146f42A73DC850FF95C71",
+              "vote": "AGREE"
+            },
+            {
+              "validator": "0x4EDbE1FC9EAeC7b0EBA849b0C76AE73Eb0ad5C47",
+              "vote": "AGREE"
+            },
+            {
+              "validator": "0x5310dcF075E0BD47d29B8ec6581F736C767f54D2",
+              "vote": "AGREE"
+            }
+          ]
+        },
+        {
+          "hash": "0x9f7c9672175db992b438563663514a6010764b61e772e68c09260a3aadf7460d",
+          "method": "trigger_covenant_check",
+          "successfulGenVm": true,
+          "validatorVotes": [
+            {
+              "validator": "0x4404Fb70d490c935758146f42A73DC850FF95C71",
+              "vote": "AGREE"
+            },
+            {
+              "validator": "0xDB1c35c1f05d885999b8f13e5735307BcC16Be88",
+              "vote": "AGREE"
+            },
+            {
+              "validator": "0xcE1d6bBB36B744536153966B4DD42276f5ADd0F8",
+              "vote": "AGREE"
+            }
+          ]
+        },
+        {
+          "hash": "0x79ddb7a13f80dad7f374690393734df54051e9040a71e5edd758f853345f9e17",
+          "method": "finalize_covenant_check",
+          "successfulGenVm": true,
+          "validatorVotes": [
+            {
+              "validator": "0x4EDbE1FC9EAeC7b0EBA849b0C76AE73Eb0ad5C47",
+              "vote": "AGREE"
+            },
+            {
+              "validator": "0xDB1c35c1f05d885999b8f13e5735307BcC16Be88",
+              "vote": "AGREE"
+            },
+            {
+              "validator": "0xacc2459F341D7a887bcA8FAA62F1EC9378d4Bc67",
+              "vote": "AGREE"
+            }
+          ]
+        },
+        {
+          "hash": "0xdfae9d8da52c3dd120c27f41d70b4be010acf8f2cc556f1245f54f875675c047",
+          "method": "mark_decision_relayed",
+          "successfulGenVm": true,
+          "validatorVotes": [
+            {
+              "validator": "0x3D83ab507785b95ca5C208bEc80CCe3D5ca98100",
+              "vote": "AGREE"
+            },
+            {
+              "validator": "0x3E5ee2507cc167C9925Bf10c67D7986581112024",
+              "vote": "AGREE"
+            },
+            {
+              "validator": "0x90402341F0B0e97b23023c0a87de957FB7148E0F",
+              "vote": "AGREE"
+            },
+            {
+              "validator": "0xBBb165E4c9d73a1493D363280f7067Cd07891dBE",
+              "vote": "AGREE"
+            },
+            {
+              "validator": "0xacc2459F341D7a887bcA8FAA62F1EC9378d4Bc67",
+              "vote": "AGREE"
+            }
+          ]
+        }
+      ],
+      "finalBaseState": [
+        "0x7401c129EDfc26E68FE19309fE461eb3Db1058Eb",
+        "0x19E7E376E7C213B7E7e7e46cc70A5dD086DAff2A",
+        1000000,
+        1500000,
+        0,
+        0,
+        0,
+        0,
+        500,
+        500,
+        1791938610,
+        1791936810,
+        60,
+        0,
+        1,
+        1,
+        5,
+        true,
+        "7bc7aca069fae6b7b12c9a719c8a75eaae9d9253cd6bd1464da1deaba1bab9d2"
+      ]
+    },
+    {
+      "name": "challenge reconciliation and three-tier breach penalties",
+      "loanId": 1,
+      "loanCommitment": "0x7cffc397fd4e943b90215d0e8a8feb334aa5e8b66a7d177cc124a56a212a8192",
+      "covenantCommitments": [
+        "0x760cb1de18fc6ca6984f44a803a7a7df37248cec8af57f8b867e134f939d6852",
+        "0xd4ed68ed16398033bea5b5deffa2566ca0b0da298758d4d2c877dd5f57576712",
+        "0x5b682b95ee42b47b95fbd689c7134111fbb87fc6f97e45a876ad58d02351e698"
+      ],
+      "baseTransactions": [
+        {
+          "label": "approve principal",
+          "hash": "f3dedbcef2bd89a621359cb162571011aeb13fc5f3014a8fc81367a8f861396b",
+          "status": 1,
+          "blockNumber": 48083727,
+          "usdcBefore": {
+            "lender": 3800000,
+            "borrower": 9383864,
+            "escrow": 0
+          },
+          "usdcAfter": {
+            "lender": 3800000,
+            "borrower": 9383864,
+            "escrow": 0
+          }
+        },
+        {
+          "label": "escrow principal",
+          "hash": "e8c4a6987161091271302f244bd61b49a68fcd3f5150c358ae8a6acb5864ae24",
+          "status": 1,
+          "blockNumber": 48083730,
+          "usdcBefore": {
+            "lender": 3800000,
+            "borrower": 9383864,
+            "escrow": 0
+          },
+          "usdcAfter": {
+            "lender": 2800000,
+            "borrower": 9383864,
+            "escrow": 1000000
+          }
+        },
+        {
+          "label": "approve collateral",
+          "hash": "4b505a904a07e783e5210a268a365bf9e288b0ab925e1c124fd271873a480944",
+          "status": 1,
+          "blockNumber": 48083755,
+          "usdcBefore": {
+            "lender": 2800000,
+            "borrower": 9383864,
+            "escrow": 1000000
+          },
+          "usdcAfter": {
+            "lender": 2800000,
+            "borrower": 9383864,
+            "escrow": 1000000
+          }
+        },
+        {
+          "label": "stake collateral",
+          "hash": "018eeda209c88f0f4a1ad3b34c238b19a6b332c4c929734a5b83344c5681d72f",
+          "status": 1,
+          "blockNumber": 48083758,
+          "usdcBefore": {
+            "lender": 2800000,
+            "borrower": 9383864,
+            "escrow": 1000000
+          },
+          "usdcAfter": {
+            "lender": 2800000,
+            "borrower": 7883864,
+            "escrow": 2500000
+          }
+        },
+        {
+          "label": "relay authenticated breach check 1",
+          "hash": "ee8ddc93b9e68bc3209a81869063e11fa1732fce6621c25a162a91ad2fc8e4af",
+          "status": 1,
+          "blockNumber": 48084137,
+          "usdcBefore": {
+            "lender": 2800000,
+            "borrower": 7883864,
+            "escrow": 2500000
+          },
+          "usdcAfter": {
+            "lender": 2800000,
+            "borrower": 7883864,
+            "escrow": 2500000
+          }
+        },
+        {
+          "label": "relay authenticated breach check 2",
+          "hash": "a330e98f1b388f72f22345de300c27b96ac151219e4d2ac7931043f4a3c39a84",
+          "status": 1,
+          "blockNumber": 48084182,
+          "usdcBefore": {
+            "lender": 2800000,
+            "borrower": 7883864,
+            "escrow": 2500000
+          },
+          "usdcAfter": {
+            "lender": 2800000,
+            "borrower": 7883864,
+            "escrow": 2500000
+          }
+        },
+        {
+          "label": "relay authenticated breach check 3",
+          "hash": "2d53b2c45bde943089c8d07cd7ce6f7a1eb6ee08cceb30eafcaf4f0cd9c89dd2",
+          "status": 1,
+          "blockNumber": 48084227,
+          "usdcBefore": {
+            "lender": 2800000,
+            "borrower": 7883864,
+            "escrow": 2500000
+          },
+          "usdcAfter": {
+            "lender": 2800000,
+            "borrower": 7883864,
+            "escrow": 2500000
+          }
+        },
+        {
+          "label": "lender default withdrawal",
+          "hash": "73b80235f9c33d63e96ae4b959a8966561ce02de012aad16179e0bae850cbd2d",
+          "status": 1,
+          "blockNumber": 48084251,
+          "usdcBefore": {
+            "lender": 2800000,
+            "borrower": 7883864,
+            "escrow": 2500000
+          },
+          "usdcAfter": {
+            "lender": 2800000,
+            "borrower": 7883864,
+            "escrow": 0
+          }
+        }
+      ],
+      "genlayerTransactions": [
+        {
+          "hash": "0x80900ed4a37387a5862dd1c22db7741a1df31d883301b33ba24c479fe5361ae1",
+          "method": "create_loan",
+          "successfulGenVm": true,
+          "validatorVotes": [
+            {
+              "validator": "0x14402D49f317CE1a2F35BAE01b1804A2A9703dCb",
+              "vote": "AGREE"
+            },
+            {
+              "validator": "0x4aba638Cf0Cf5249437AaD968fC69dde46ae6BAC",
+              "vote": "AGREE"
+            },
+            {
+              "validator": "0xcE1d6bBB36B744536153966B4DD42276f5ADd0F8",
+              "vote": "AGREE"
+            }
+          ]
+        },
+        {
+          "hash": "0x11066c71e883f58f060021d4a325064c9a33f1b564b324e1280f2f84c02b5b6d",
+          "method": "activate_base_loan",
+          "successfulGenVm": true,
+          "validatorVotes": [
+            {
+              "validator": "0x3E5ee2507cc167C9925Bf10c67D7986581112024",
+              "vote": "AGREE"
+            },
+            {
+              "validator": "0x4404Fb70d490c935758146f42A73DC850FF95C71",
+              "vote": "AGREE"
+            },
+            {
+              "validator": "0x4EDbE1FC9EAeC7b0EBA849b0C76AE73Eb0ad5C47",
+              "vote": "AGREE"
+            },
+            {
+              "validator": "0x9ea87b28DcA2F79fe108CF06a4c13B4c876AC23d",
+              "vote": "AGREE"
+            },
+            {
+              "validator": "0xec2Fb79cd12255Eb34886CEd7332f27B98DEe658",
+              "vote": "AGREE"
+            }
+          ]
+        },
+        {
+          "hash": "0x83554c8553ea24f31e309972f626e37871c9f40b372f64bbd5812ed965889ae8",
+          "method": "trigger_covenant_check",
+          "successfulGenVm": true,
+          "validatorVotes": [
+            {
+              "validator": "0x3D83ab507785b95ca5C208bEc80CCe3D5ca98100",
+              "vote": "AGREE"
+            },
+            {
+              "validator": "0x4EDbE1FC9EAeC7b0EBA849b0C76AE73Eb0ad5C47",
+              "vote": "AGREE"
+            },
+            {
+              "validator": "0x772ffCd1dF6Cc566eC4b8d3f4F4f8eBbb6B36C84",
+              "vote": "AGREE"
+            }
+          ]
+        },
+        {
+          "hash": "0x0d49fa06631fa431c89472f00084e536b21b56cb6d6a8dfd3c06d28bc4650671",
+          "method": "trigger_covenant_check",
+          "successfulGenVm": true,
+          "validatorVotes": [
+            {
+              "validator": "0x4EDbE1FC9EAeC7b0EBA849b0C76AE73Eb0ad5C47",
+              "vote": "AGREE"
+            },
+            {
+              "validator": "0x90402341F0B0e97b23023c0a87de957FB7148E0F",
+              "vote": "AGREE"
+            },
+            {
+              "validator": "0xcE1d6bBB36B744536153966B4DD42276f5ADd0F8",
+              "vote": "AGREE"
+            }
+          ]
+        },
+        {
+          "hash": "0x5a915c18759d369ad0fb54b73cf7ee19341605b16b7e94ccbf06b0d3a11b0647",
+          "method": "trigger_covenant_check",
+          "successfulGenVm": true,
+          "validatorVotes": [
+            {
+              "validator": "0x03D58A4DeF6fDFc032A56374785a5F571D07Bc11",
+              "vote": "AGREE"
+            },
+            {
+              "validator": "0x6737ca1d6BDF8b7C4f19143E2D55581Ca64eb7C3",
+              "vote": "AGREE"
+            },
+            {
+              "validator": "0x90402341F0B0e97b23023c0a87de957FB7148E0F",
+              "vote": "AGREE"
+            }
+          ]
+        },
+        {
+          "hash": "0x81effe2f4f61ae5afb5f4239ee2181eab5030ed5e4d79b28e379aa9198773eb5",
+          "method": "submit_challenge_evidence",
+          "successfulGenVm": true,
+          "validatorVotes": [
+            {
+              "validator": "0x03D58A4DeF6fDFc032A56374785a5F571D07Bc11",
+              "vote": "AGREE"
+            },
+            {
+              "validator": "0x5310dcF075E0BD47d29B8ec6581F736C767f54D2",
+              "vote": "AGREE"
+            },
+            {
+              "validator": "0x6737ca1d6BDF8b7C4f19143E2D55581Ca64eb7C3",
+              "vote": "AGREE"
+            },
+            {
+              "validator": "0x772ffCd1dF6Cc566eC4b8d3f4F4f8eBbb6B36C84",
+              "vote": "AGREE"
+            },
+            {
+              "validator": "0xec2Fb79cd12255Eb34886CEd7332f27B98DEe658",
+              "vote": "AGREE"
+            }
+          ]
+        },
+        {
+          "hash": "0x7f3fff65034ee719886cbf5a86b53e2d911353ed92229f5b4c7ec4ef5154b60f",
+          "method": "submit_challenge_evidence",
+          "successfulGenVm": true,
+          "validatorVotes": [
+            {
+              "validator": "0x36728d2a123aB444E603EE5b2ad17d18Bb193557",
+              "vote": "AGREE"
+            },
+            {
+              "validator": "0x3D83ab507785b95ca5C208bEc80CCe3D5ca98100",
+              "vote": "AGREE"
+            },
+            {
+              "validator": "0xcE1d6bBB36B744536153966B4DD42276f5ADd0F8",
+              "vote": "AGREE"
+            }
+          ]
+        },
+        {
+          "hash": "0x9abb2a50e17d96cc1d2c99e157759b6d0f2794e47e470215256b8bef112d8075",
+          "method": "submit_challenge_evidence",
+          "successfulGenVm": true,
+          "validatorVotes": [
+            {
+              "validator": "0x14402D49f317CE1a2F35BAE01b1804A2A9703dCb",
+              "vote": "AGREE"
+            },
+            {
+              "validator": "0x3E5ee2507cc167C9925Bf10c67D7986581112024",
+              "vote": "AGREE"
+            },
+            {
+              "validator": "0xBBb165E4c9d73a1493D363280f7067Cd07891dBE",
+              "vote": "AGREE"
+            }
+          ]
+        },
+        {
+          "hash": "0x1a2886eb1747bbd957c0c7ce87dffe8fa7814b8aa872016743b225a7ec04856e",
+          "method": "finalize_covenant_check",
+          "successfulGenVm": true,
+          "validatorVotes": [
+            {
+              "validator": "0x03D58A4DeF6fDFc032A56374785a5F571D07Bc11",
+              "vote": "AGREE"
+            },
+            {
+              "validator": "0x36728d2a123aB444E603EE5b2ad17d18Bb193557",
+              "vote": "AGREE"
+            },
+            {
+              "validator": "0x3D83ab507785b95ca5C208bEc80CCe3D5ca98100",
+              "vote": "AGREE"
+            },
+            {
+              "validator": "0x76c25AFC12c75485703cCFfd0083AA6201455B25",
+              "vote": "AGREE"
+            },
+            {
+              "validator": "0xE6BD8050758CB15fC88387223E31Ae2708B119dC",
+              "vote": "AGREE"
+            }
+          ]
+        },
+        {
+          "hash": "0x40563811e2e4bc8b8fb41284bbc21a996138e75f9757bd7668257fa967f97132",
+          "method": "mark_decision_relayed",
+          "successfulGenVm": true,
+          "validatorVotes": [
+            {
+              "validator": "0x5310dcF075E0BD47d29B8ec6581F736C767f54D2",
+              "vote": "AGREE"
+            },
+            {
+              "validator": "0x772ffCd1dF6Cc566eC4b8d3f4F4f8eBbb6B36C84",
+              "vote": "AGREE"
+            },
+            {
+              "validator": "0xDB1c35c1f05d885999b8f13e5735307BcC16Be88",
+              "vote": "AGREE"
+            },
+            {
+              "validator": "0xacc2459F341D7a887bcA8FAA62F1EC9378d4Bc67",
+              "vote": "AGREE"
+            },
+            {
+              "validator": "0xcE1d6bBB36B744536153966B4DD42276f5ADd0F8",
+              "vote": "AGREE"
+            }
+          ]
+        },
+        {
+          "hash": "0x633aab307bb4e156f5cee0cb8af4e9afb7a8d410c196dad256d7157ffbc7a227",
+          "method": "finalize_covenant_check",
+          "successfulGenVm": true,
+          "validatorVotes": [
+            {
+              "validator": "0x14402D49f317CE1a2F35BAE01b1804A2A9703dCb",
+              "vote": "AGREE"
+            },
+            {
+              "validator": "0x4aba638Cf0Cf5249437AaD968fC69dde46ae6BAC",
+              "vote": "AGREE"
+            },
+            {
+              "validator": "0x5310dcF075E0BD47d29B8ec6581F736C767f54D2",
+              "vote": "AGREE"
+            },
+            {
+              "validator": "0x772ffCd1dF6Cc566eC4b8d3f4F4f8eBbb6B36C84",
+              "vote": "AGREE"
+            },
+            {
+              "validator": "0xE6BD8050758CB15fC88387223E31Ae2708B119dC",
+              "vote": "AGREE"
+            }
+          ]
+        },
+        {
+          "hash": "0xb352c49a6d6c8486c5b74e7865b55dad07445cd5a91fc7065b7941a44fa8adba",
+          "method": "mark_decision_relayed",
+          "successfulGenVm": true,
+          "validatorVotes": [
+            {
+              "validator": "0x9ea87b28DcA2F79fe108CF06a4c13B4c876AC23d",
+              "vote": "AGREE"
+            },
+            {
+              "validator": "0xE6BD8050758CB15fC88387223E31Ae2708B119dC",
+              "vote": "AGREE"
+            },
+            {
+              "validator": "0xcE1d6bBB36B744536153966B4DD42276f5ADd0F8",
+              "vote": "AGREE"
+            }
+          ]
+        },
+        {
+          "hash": "0x71b9b79e301cf70cc55d32a9fc24454ec6e39db1a859d8992476d804fe60ae70",
+          "method": "finalize_covenant_check",
+          "successfulGenVm": true,
+          "validatorVotes": [
+            {
+              "validator": "0x03D58A4DeF6fDFc032A56374785a5F571D07Bc11",
+              "vote": "AGREE"
+            },
+            {
+              "validator": "0x14402D49f317CE1a2F35BAE01b1804A2A9703dCb",
+              "vote": "AGREE"
+            },
+            {
+              "validator": "0x772ffCd1dF6Cc566eC4b8d3f4F4f8eBbb6B36C84",
+              "vote": "AGREE"
+            },
+            {
+              "validator": "0xcE1d6bBB36B744536153966B4DD42276f5ADd0F8",
+              "vote": "AGREE"
+            },
+            {
+              "validator": "0xec2Fb79cd12255Eb34886CEd7332f27B98DEe658",
+              "vote": "AGREE"
+            }
+          ]
+        },
+        {
+          "hash": "0xa02747bacf895a3469898567360a13f63445a0fc121e6622bb115c280ceed82b",
+          "method": "mark_decision_relayed",
+          "successfulGenVm": true,
+          "validatorVotes": [
+            {
+              "validator": "0x14402D49f317CE1a2F35BAE01b1804A2A9703dCb",
+              "vote": "AGREE"
+            },
+            {
+              "validator": "0x4404Fb70d490c935758146f42A73DC850FF95C71",
+              "vote": "AGREE"
+            },
+            {
+              "validator": "0x5310dcF075E0BD47d29B8ec6581F736C767f54D2",
+              "vote": "AGREE"
+            },
+            {
+              "validator": "0x6737ca1d6BDF8b7C4f19143E2D55581Ca64eb7C3",
+              "vote": "AGREE"
+            },
+            {
+              "validator": "0x9ea87b28DcA2F79fe108CF06a4c13B4c876AC23d",
+              "vote": "AGREE"
+            }
+          ]
+        }
+      ],
+      "finalBaseState": [
+        "0x7401c129EDfc26E68FE19309fE461eb3Db1058Eb",
+        "0x19E7E376E7C213B7E7e7e46cc70A5dD086DAff2A",
+        1000000,
+        1500000,
+        0,
+        0,
+        0,
+        0,
+        500,
+        650,
+        1791939336,
+        1791937536,
+        60,
+        3,
+        3,
+        0,
+        4,
+        false,
+        "7cffc397fd4e943b90215d0e8a8feb334aa5e8b66a7d177cc124a56a212a8192"
+      ]
+    },
+    {
+      "name": "undrawn maturity settlement and rightful withdrawals",
+      "loanId": 2,
+      "loanCommitment": "0x5af2bf5293be8f137615e3f8935845b615c6f0f664d27402f8a7eace34d5604f",
+      "covenantCommitments": [
+        "0xee5aec42d3011a2a94e7d6cf075a479a26c31a22929b207a17b9ef278738b495"
+      ],
+      "baseTransactions": [
+        {
+          "label": "approve principal",
+          "hash": "38c89d6659095829edfd29584aa743a4bee8e2e44d58e8eeb741f7d052d16afa",
+          "status": 1,
+          "blockNumber": 48084255,
+          "usdcBefore": {
+            "lender": 5300000,
+            "borrower": 7883864,
+            "escrow": 0
+          },
+          "usdcAfter": {
+            "lender": 5300000,
+            "borrower": 7883864,
+            "escrow": 0
+          }
+        },
+        {
+          "label": "escrow principal",
+          "hash": "08795a1ea52be67cfe4544fffe83987b3c770ed3ec8dc4e6c9f169ea92fa4423",
+          "status": 1,
+          "blockNumber": 48084258,
+          "usdcBefore": {
+            "lender": 5300000,
+            "borrower": 7883864,
+            "escrow": 0
+          },
+          "usdcAfter": {
+            "lender": 4300000,
+            "borrower": 7883864,
+            "escrow": 1000000
+          }
+        },
+        {
+          "label": "approve collateral",
+          "hash": "774f0d2515e20d570c77705da86b2682576dd4c5d2758bf6bc9d964f89372db1",
+          "status": 1,
+          "blockNumber": 48084283,
+          "usdcBefore": {
+            "lender": 4300000,
+            "borrower": 7883864,
+            "escrow": 1000000
+          },
+          "usdcAfter": {
+            "lender": 4300000,
+            "borrower": 7883864,
+            "escrow": 1000000
+          }
+        },
+        {
+          "label": "stake collateral",
+          "hash": "f7c3594dca208787ab944fb9bc757eb4c39ee7870944b9db5f2dc975d0527d26",
+          "status": 1,
+          "blockNumber": 48084286,
+          "usdcBefore": {
+            "lender": 4300000,
+            "borrower": 7883864,
+            "escrow": 1000000
+          },
+          "usdcAfter": {
+            "lender": 4300000,
+            "borrower": 6383864,
+            "escrow": 2500000
+          }
+        },
+        {
+          "label": "permissionless maturity settlement",
+          "hash": "d81a6db9de4dd975a582da1179f45bc6f47f83b714cd25c4b22e1145e8f613e7",
+          "status": 1,
+          "blockNumber": 48084377,
+          "usdcBefore": {
+            "lender": 4300000,
+            "borrower": 6383864,
+            "escrow": 2500000
+          },
+          "usdcAfter": {
+            "lender": 4300000,
+            "borrower": 6383864,
+            "escrow": 2500000
+          }
+        },
+        {
+          "label": "lender principal withdrawal",
+          "hash": "e485f33a4c81b3f4aea1a23c5a4bf63a2e4353d9f2ad2df270160c8cc4b13c97",
+          "status": 1,
+          "blockNumber": 48084380,
+          "usdcBefore": {
+            "lender": 4300000,
+            "borrower": 6383864,
+            "escrow": 2500000
+          },
+          "usdcAfter": {
+            "lender": 4300000,
+            "borrower": 6383864,
+            "escrow": 1500000
+          }
+        },
+        {
+          "label": "borrower collateral withdrawal",
+          "hash": "d4c4e289bf647f9b625bdbdfaaf0502f13f29725b417d66e15609870a7d982ed",
+          "status": 1,
+          "blockNumber": 48084383,
+          "usdcBefore": {
+            "lender": 5300000,
+            "borrower": 6383864,
+            "escrow": 1500000
+          },
+          "usdcAfter": {
+            "lender": 5300000,
+            "borrower": 7883864,
+            "escrow": 0
+          }
+        }
+      ],
+      "genlayerTransactions": [
+        {
+          "hash": "0x94849e69871ff7fb1ca3572fa5bed8f0962d0c0f2cf2fc03bcb480b314269e40",
+          "method": "create_loan",
+          "successfulGenVm": true,
+          "validatorVotes": [
+            {
+              "validator": "0x03D58A4DeF6fDFc032A56374785a5F571D07Bc11",
+              "vote": "AGREE"
+            },
+            {
+              "validator": "0x3D83ab507785b95ca5C208bEc80CCe3D5ca98100",
+              "vote": "AGREE"
+            },
+            {
+              "validator": "0xcE1d6bBB36B744536153966B4DD42276f5ADd0F8",
+              "vote": "AGREE"
+            }
+          ]
+        },
+        {
+          "hash": "0x7f528d0d6f3661158ca871d66983dcaf315dbd859678f814269bc7271e0eaa6e",
+          "method": "activate_base_loan",
+          "successfulGenVm": true,
+          "validatorVotes": [
+            {
+              "validator": "0x03D58A4DeF6fDFc032A56374785a5F571D07Bc11",
+              "vote": "AGREE"
+            },
+            {
+              "validator": "0x5310dcF075E0BD47d29B8ec6581F736C767f54D2",
+              "vote": "AGREE"
+            },
+            {
+              "validator": "0xec2Fb79cd12255Eb34886CEd7332f27B98DEe658",
+              "vote": "AGREE"
+            }
+          ]
+        }
+      ],
+      "finalBaseState": [
+        "0x7401c129EDfc26E68FE19309fE461eb3Db1058Eb",
+        "0x19E7E376E7C213B7E7e7e46cc70A5dD086DAff2A",
+        1000000,
+        1500000,
+        0,
+        0,
+        0,
+        0,
+        500,
+        500,
+        1791936971,
+        1791936881,
+        60,
+        0,
+        1,
+        0,
+        7,
+        false,
+        "5af2bf5293be8f137615e3f8935845b615c6f0f664d27402f8a7eace34d5604f"
+      ]
+    }
+  ],
+  "challengeWaitUntil": 1791936507,
+  "finishedAt": 1791937056
+}

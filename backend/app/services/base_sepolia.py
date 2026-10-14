@@ -7,6 +7,9 @@ or signs on a user's behalf.
 from __future__ import annotations
 
 from web3 import Web3
+from eth_account.messages import encode_defunct
+from eth_abi import encode
+import time
 
 from app.core.config import get_settings
 
@@ -14,7 +17,8 @@ ESCROW_ABI = [
     {"type":"function","name":"applyDecision","stateMutability":"nonpayable","inputs":[
         {"name":"loanId","type":"uint256"},{"name":"checkId","type":"uint256"},
         {"name":"covenantIndex","type":"uint256"},{"name":"decision","type":"uint8"},
-        {"name":"loanCommitment","type":"bytes32"},{"name":"covenantCommitment","type":"bytes32"}],"outputs":[]},
+        {"name":"loanCommitment","type":"bytes32"},{"name":"covenantCommitment","type":"bytes32"},
+        {"name":"attestationDeadline","type":"uint256"},{"name":"attestation","type":"bytes"}],"outputs":[]},
     {"type":"function","name":"loans","stateMutability":"view","inputs":[{"name":"","type":"uint256"}],
      "outputs":[{"name":"lender","type":"address"},{"name":"borrower","type":"address"},
         {"name":"principal","type":"uint256"},{"name":"collateralRequired","type":"uint256"},
@@ -51,14 +55,20 @@ def get_base_loan(loan_id: int) -> dict:
 
 def relay_finalized_decision(loan_id: int, check_id: int, covenant_index: int, decision: int, loan_commitment: str, covenant_commitment: str) -> str:
     settings = get_settings()
-    if not settings.BASE_ESCROW_ADDRESS or not settings.BASE_RELAYER_PRIVATE_KEY:
+    if not settings.BASE_ESCROW_ADDRESS or not settings.BASE_RELAYER_PRIVATE_KEY or not settings.DECISION_SIGNER_PRIVATE_KEY:
         raise RuntimeError("Base Sepolia relay is not configured")
     w3 = _web3()
     account = w3.eth.account.from_key(settings.BASE_RELAYER_PRIVATE_KEY)
     contract = w3.eth.contract(address=Web3.to_checksum_address(settings.BASE_ESCROW_ADDRESS), abi=ESCROW_ABI)
+    deadline = int(time.time()) + 600
+    payload = Web3.keccak(encode(
+        ["address","uint256","address","uint256","uint256","uint256","uint8","bytes32","bytes32","uint256"],
+        [contract.address, 84532, Web3.to_checksum_address(settings.CONTRACT_ADDRESS), loan_id, check_id, covenant_index, decision, bytes.fromhex(loan_commitment.removeprefix("0x")), bytes.fromhex(covenant_commitment.removeprefix("0x")), deadline],
+    ))
+    signature = w3.eth.account.sign_message(encode_defunct(primitive=payload), private_key=settings.DECISION_SIGNER_PRIVATE_KEY).signature
     gas_price = w3.eth.gas_price
     priority_fee = min(w3.to_wei(1, "gwei"), gas_price)
-    tx = contract.functions.applyDecision(loan_id, check_id, covenant_index, decision, loan_commitment, covenant_commitment).build_transaction({
+    tx = contract.functions.applyDecision(loan_id, check_id, covenant_index, decision, loan_commitment, covenant_commitment, deadline, signature).build_transaction({
         "from": account.address, "nonce": w3.eth.get_transaction_count(account.address, "pending"),
         "chainId": 84532, "gas": 350_000, "maxFeePerGas": gas_price * 2 + priority_fee,
         "maxPriorityFeePerGas": priority_fee,

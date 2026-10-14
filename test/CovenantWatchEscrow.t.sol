@@ -3,7 +3,7 @@ pragma solidity ^0.8.24;
 
 import {CovenantWatchEscrow, IERC20} from "../contracts/base/CovenantWatchEscrow.sol";
 
-interface Vm { function prank(address) external; function warp(uint256) external; function expectRevert() external; }
+interface Vm { function prank(address) external; function warp(uint256) external; function expectRevert() external; function addr(uint256) external returns (address); function sign(uint256, bytes32) external returns (uint8, bytes32, bytes32); }
 
 contract MockUSDC is IERC20 {
     mapping(address => uint256) public balanceOf;
@@ -23,11 +23,12 @@ contract CovenantWatchEscrowTest {
     address lender = address(0x1111);
     address borrower = address(0x2222);
     address attacker = address(0x3333);
+    uint256 signerKey = 0xA11CE;
     uint256 constant U = 1e6;
 
     function setUp() public {
         usdc = new MockUSDC();
-        escrow = new CovenantWatchEscrow(address(usdc), address(this));
+        escrow = new CovenantWatchEscrow(address(usdc), address(this), vm.addr(signerKey), address(0x4444));
         usdc.mint(lender, 10_000 * U); usdc.mint(borrower, 10_000 * U);
         vm.prank(lender); usdc.approve(address(escrow), type(uint256).max);
         vm.prank(borrower); usdc.approve(address(escrow), type(uint256).max);
@@ -51,7 +52,11 @@ contract CovenantWatchEscrowTest {
     }
 
     function relayDecision(uint256 id, uint256 checkId, uint256 covenantIndex, CovenantWatchEscrow.Decision decision, bytes32 loanCommitment, bytes32 covenantCommitment) internal {
-        escrow.applyDecision(id, checkId, covenantIndex, decision, loanCommitment, covenantCommitment);
+        uint256 deadline = block.timestamp + 1 hours;
+        bytes32 payload = keccak256(abi.encode(address(escrow), block.chainid, address(0x4444), id, checkId, covenantIndex, decision, loanCommitment, covenantCommitment, deadline));
+        bytes32 digest = keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", payload));
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(signerKey, digest);
+        escrow.applyDecision(id, checkId, covenantIndex, decision, loanCommitment, covenantCommitment, deadline, abi.encodePacked(r, s, v));
     }
 
     function testDistinctCovenantsRequiredForDraw() public {
@@ -88,10 +93,22 @@ contract CovenantWatchEscrowTest {
 
     function testUnauthorizedRelayAndReplayRejected() public {
         (uint256 id, bytes32 loanCommitment, bytes32[] memory commits) = createAndStake(1);
-        vm.prank(attacker); vm.expectRevert(); escrow.applyDecision(id, 1, 0, CovenantWatchEscrow.Decision.Compliant, loanCommitment, commits[0]);
+        vm.prank(attacker); vm.expectRevert(); escrow.applyDecision(id, 1, 0, CovenantWatchEscrow.Decision.Compliant, loanCommitment, commits[0], 0, "");
         relayDecision(id, 1, 0, CovenantWatchEscrow.Decision.Compliant, loanCommitment, commits[0]);
         vm.expectRevert(); relayDecision(id, 1, 0, CovenantWatchEscrow.Decision.Compliant, loanCommitment, commits[0]);
         vm.expectRevert(); relayDecision(id, 0, 0, CovenantWatchEscrow.Decision.Compliant, loanCommitment, commits[0]);
+    }
+
+    function testAuthorizedRelayerCannotForgeSignedVerdictOrUseExpiredAttestation() public {
+        (uint256 id, bytes32 loanCommitment, bytes32[] memory commits) = createAndStake(1);
+        uint256 deadline = block.timestamp + 1 hours;
+        bytes32 payload = keccak256(abi.encode(address(escrow), block.chainid, address(0x4444), id, 7, 0, CovenantWatchEscrow.Decision.Compliant, loanCommitment, commits[0], deadline));
+        bytes32 digest = keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", payload));
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(signerKey, digest);
+        bytes memory signature = abi.encodePacked(r, s, v);
+        vm.expectRevert(); escrow.applyDecision(id, 7, 0, CovenantWatchEscrow.Decision.Breach, loanCommitment, commits[0], deadline, signature);
+        vm.warp(deadline + 1);
+        vm.expectRevert(); escrow.applyDecision(id, 7, 0, CovenantWatchEscrow.Decision.Compliant, loanCommitment, commits[0], deadline, signature);
     }
 
     function testExcessiveFrozenConsequencesRejectedAtOrigination() public {
