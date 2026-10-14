@@ -6,21 +6,21 @@ Last verified: 13 October 2026.
 
 | Component | Value |
 |---|---|
-| GenLayer StudioNet adjudicator | `0x1b4BA5Fe8894648E4B90d80f2DA5d53880CcfD7b` |
-| GenLayer deployment transaction | `0x9698a8fa9f6db79cbcda2a0986243d4b60f0f993003049864bdccf7f0aa0634a` |
-| Base Sepolia escrow | `0xbF8F70Db480d003Dd6c5629c50b1f9Bf3Adc9E9b` |
-| Base deployment transaction | `0x1690edbcf6b5a519ac5c574235579e88a966185f3596251dffc33691b6e9df68` |
+| GenLayer StudioNet adjudicator | `0x646Ca53B8CafC1e1242c67AC9059F1c53f7B2E4D` |
+| GenLayer deployment transaction | `0x2828a9f9836a985f46d2e655454d0ee373681f27bc2824a748552e4af339814e` |
+| Base Sepolia escrow | `0xcCebA6072A607fed1674547B68EF3Fb1b30F867e` |
+| Base deployment transaction | `0xf17e5d27d9451e50a16130e314840a71e2cbc79acb875b086f62f5d9bea45a29` |
 | Base owner/deployer | `0x7401c129EDfc26E68FE19309fE461eb3Db1058Eb` |
 | Dedicated Base relayer | `0x19E7E376E7C213B7E7e7e46cc70A5dD086DAff2A` |
 | Decision signer | `0x7401c129EDfc26E68FE19309fE461eb3Db1058Eb` |
 | Relayer funding transaction | `0xd2088bc32f7cf7143b0e5f44060fc2e0eacdb55fa58264e50d885b031bfdec34` |
 | Circle Base Sepolia USDC | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` |
 | Frontend | https://covenant-watch.vercel.app |
-| Vercel deployment | `dpl_BG3fddp9AQWHYgTYFpESUZ8fJJ8J` |
+| Vercel deployment | `dpl_JAxumXRuTiSeeMDKR36sedevdeFi` |
 | Backend | https://covenant-watch-api.fly.dev |
 | Fly app / region | `covenant-watch-api` / `iad` |
 
-The GenLayer deployment is finalized and successful with five agreeing validators. The live acceptance run created three paired loans, and the production backend indexes those three loans.
+The GenLayer deployment is finalized and successful with five agreeing validators. The V3 acceptance run created two paired loans, and the production backend indexes both (`REPAID` and `DEFAULTED`).
 
 ## 1. Verify source locally
 
@@ -60,21 +60,21 @@ Do not wire the address until the deployment receipt is `FINALIZED` and executio
 Backend production secrets/configuration:
 
 ```text
-CONTRACT_ADDRESS=0x1b4BA5Fe8894648E4B90d80f2DA5d53880CcfD7b
+CONTRACT_ADDRESS=0x646Ca53B8CafC1e1242c67AC9059F1c53f7B2E4D
 GENLAYER_NETWORK=studionet
 BASE_SEPOLIA_RPC_URL=https://sepolia.base.org
 BASE_USDC_ADDRESS=0x036CbD53842c5426634e7929541eC2318f3dCF7e
-BASE_ESCROW_ADDRESS=0xbF8F70Db480d003Dd6c5629c50b1f9Bf3Adc9E9b
+BASE_ESCROW_ADDRESS=0xcCebA6072A607fed1674547B68EF3Fb1b30F867e
 BASE_RELAYER_PRIVATE_KEY=<Fly secret; never commit>
 ```
 
 Frontend build variables:
 
 ```text
-NEXT_PUBLIC_CONTRACT_ADDRESS=0x1b4BA5Fe8894648E4B90d80f2DA5d53880CcfD7b
+NEXT_PUBLIC_CONTRACT_ADDRESS=0x646Ca53B8CafC1e1242c67AC9059F1c53f7B2E4D
 NEXT_PUBLIC_GENLAYER_NETWORK=studionet
 NEXT_PUBLIC_BASE_USDC_ADDRESS=0x036CbD53842c5426634e7929541eC2318f3dCF7e
-NEXT_PUBLIC_BASE_ESCROW_ADDRESS=0xbF8F70Db480d003Dd6c5629c50b1f9Bf3Adc9E9b
+NEXT_PUBLIC_BASE_ESCROW_ADDRESS=0xcCebA6072A607fed1674547B68EF3Fb1b30F867e
 NEXT_PUBLIC_BACKEND_URL=https://covenant-watch-api.fly.dev
 NEXT_PUBLIC_GENLAYER_EXPLORER_URL=https://explorer-studio.genlayer.com/
 ```

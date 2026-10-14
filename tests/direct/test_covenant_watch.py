@@ -27,6 +27,21 @@ def test_registers_usdc_terms_without_gen_escrow(direct_vm, direct_deploy, direc
     assert loan["principal_deposited"] == 0
     assert loan["collateral_deposited"] == 0
 
+def test_failed_registration_rejects_commitment_term_and_penalty_mismatches(direct_vm, direct_deploy, direct_alice, direct_bob):
+    contract = direct_deploy(CONTRACT_PATH)
+    original = onchain_covenant(tier1=200, tier2=2500)
+    args = create_args(direct_alice, direct_bob, [original])
+    direct_vm.sender = direct_alice
+    changed_penalty = onchain_covenant(tier1=201, tier2=2500)
+    penalty_args = list(args)
+    penalty_args[9] = json.dumps([changed_penalty], separators=(",", ":"))
+    with direct_vm.expect_revert(): contract.create_loan(*penalty_args)
+    changed_terms = list(args)
+    changed_terms[3] += 1
+    with direct_vm.expect_revert(): contract.create_loan(*changed_terms)
+    contract.create_loan(*args)
+    with direct_vm.expect_revert(): contract.create_loan(*args)
+
 def test_only_borrower_can_record_base_stake(direct_vm, direct_deploy, direct_alice, direct_bob, direct_charlie):
     contract = direct_deploy(CONTRACT_PATH)
     loan_id = create(contract, direct_vm, direct_alice, direct_bob, [onchain_covenant()])

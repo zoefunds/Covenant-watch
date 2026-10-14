@@ -12,13 +12,13 @@ Last verified: 13 October 2026.
 |---|---|
 | Frontend | https://covenant-watch.vercel.app |
 | Backend | https://covenant-watch-api.fly.dev |
-| GenLayer adjudicator | `0x1b4BA5Fe8894648E4B90d80f2DA5d53880CcfD7b` |
-| Base Sepolia escrow | `0xbF8F70Db480d003Dd6c5629c50b1f9Bf3Adc9E9b` |
+| GenLayer adjudicator | `0x646Ca53B8CafC1e1242c67AC9059F1c53f7B2E4D` |
+| Base Sepolia escrow | `0xcCebA6072A607fed1674547B68EF3Fb1b30F867e` |
 | Circle Base Sepolia USDC | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` |
 | Base decision relayer | `0x19E7E376E7C213B7E7e7e46cc70A5dD086DAff2A` |
 | Decision signer | `0x7401c129EDfc26E68FE19309fE461eb3Db1058Eb` |
 
-Both contracts were freshly deployed for this remediation and the live acceptance run created three paired loans with real Base Sepolia USDC movement and finalized GenLayer transactions.
+Both contracts were freshly deployed for this remediation. The V3 acceptance run created two paired loans with real Base Sepolia USDC movement, finalized GenLayer transactions, and recovery from a real canceled/no-majority transaction.
 
 ## Transaction flow
 
@@ -43,6 +43,7 @@ There is no Reown or wagmi connector layer. The provider selected during EIP-696
 - `contracts/covenant_watch.py` performs adjudication and never holds funds.
 - The backend is a read cache, authentication service, URL-preview service, and narrow finalized-decision relayer. It cannot originate, stake, draw, repay, or claim a loan.
 - The Base contract rejects an unauthorized relayer, invalid or expired decision attestation, mismatched commitment or source-contract domain, excessive consequence, and repeated `(loanId, checkId)` decision.
+- `COVENANT_WATCH_LOAN_V3` binds the ordered covenant hashes and a separately derived penalty-schedule hash. Base recomputes the schedule from its arrays; GenLayer recomputes it from validated covenant definitions, so even an otherwise-valid one-basis-point mismatch is rejected.
 - Cached API data is non-authoritative. Contracts enforce all money-relevant state transitions.
 
 ## Repository

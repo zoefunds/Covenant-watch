@@ -10,17 +10,17 @@ The milestone separates economic execution from intelligent adjudication. Base S
 
 | Component | Address or transaction |
 |---|---|
-| Base Sepolia escrow | `0xbF8F70Db480d003Dd6c5629c50b1f9Bf3Adc9E9b` |
-| Base deployment transaction | `0x1690edbcf6b5a519ac5c574235579e88a966185f3596251dffc33691b6e9df68` |
+| Base Sepolia escrow | `0xcCebA6072A607fed1674547B68EF3Fb1b30F867e` |
+| Base deployment transaction | `0xf17e5d27d9451e50a16130e314840a71e2cbc79acb875b086f62f5d9bea45a29` |
 | Base owner/deployer and dedicated relayer | `0x19E7E376E7C213B7E7e7e46cc70A5dD086DAff2A` |
 | Decision signer | `0x7401c129EDfc26E68FE19309fE461eb3Db1058Eb` |
 | Circle Base Sepolia USDC | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` |
-| GenLayer adjudicator | `0x1b4BA5Fe8894648E4B90d80f2DA5d53880CcfD7b` |
-| GenLayer deployment transaction | `0x9698a8fa9f6db79cbcda2a0986243d4b60f0f993003049864bdccf7f0aa0634a` |
+| GenLayer adjudicator | `0x646Ca53B8CafC1e1242c67AC9059F1c53f7B2E4D` |
+| GenLayer deployment transaction | `0x2828a9f9836a985f46d2e655454d0ee373681f27bc2824a748552e4af339814e` |
 | Frontend | https://covenant-watch.vercel.app |
 | Backend | https://covenant-watch-api.fly.dev |
 
-The GenLayer deployment finalized successfully with five `AGREE` votes. The live acceptance run created three paired loans and the production API indexes all three.
+The GenLayer deployment finalized successfully with five `AGREE` votes. The V3 acceptance run created two paired loans and the production API indexes both.
 
 ## Base Sepolia work
 
@@ -64,9 +64,9 @@ The `/loans` route contains no hard-coded verified-loan cards. It displays only 
 - GenLayer deployment receipt: successful and finalized with five agreeing validators.
 - GenLayer paired loan state: read directly.
 - Fly service: healthy and configured for the fresh address pair.
-- Vercel production deployment: `dpl_2GwcpoH84BXSm3ZJqwr6c2u8b3Mj`.
-- Local Foundry security suite: 10 passed, 0 failed.
-- Backend/direct suite: 29 passed, 0 failed.
+- Vercel production deployment: `dpl_JAxumXRuTiSeeMDKR36sedevdeFi`.
+- Local Foundry security suite: 13 passed, 0 failed.
+- Backend/direct suite: 30 passed, 0 failed.
 - Frontend ESLint, TypeScript checking, and production build: passed.
 - Live paired-chain acceptance: completed with separate lender `0x7401c129EDfc26E68FE19309fE461eb3Db1058Eb` and borrower `0x19E7E376E7C213B7E7e7e46cc70A5dD086DAff2A` wallets.
 
@@ -79,9 +79,8 @@ The checked-in evidence artifact [`acceptance-evidence.json`](./acceptance-evide
 
 - Loan 0: USDC principal escrow, collateral staking, finalized 3/3-source compliant adjudication, forged relay rejection/recovery, borrower draw, exact repayment, lender settlement withdrawal, and borrower collateral withdrawal. Final Base status: `REPAID`.
 - Loan 1: three distinct covenant checks, three preauthorized challenge publishers, finalized breach decisions, tier-1/2/3 progression, replay/commitment protections, and lender default withdrawal. Final Base status: `DEFAULTED`, interest `650` bps, escrow balance `0`.
-- Loan 2: principal and collateral escrow without draw, maturity plus settlement grace, permissionless settlement, lender principal withdrawal, and borrower collateral withdrawal. Final Base status: `TIMEOUT_RECLAIMED`.
 
-Representative Base receipts include loan-0 escrow `0x8530e9eb2abc8db89025d265808c9834e203c0294d81fc0a3507958f62447198`, breach relays `0xee8ddc93b9e68bc3209a81869063e11fa1732fce6621c25a162a91ad2fc8e4af`, `0xa330e98f1b388f72f22345de300c27b96ac151219e4d2ac7931043f4a3c39a84`, `0x2d53b2c45bde943089c8d07cd7ce6f7a1eb6ee08cceb30eafcaf4f0cd9c89dd2`, and maturity settlement `0xd81a6db9de4dd975a582da1179f45bc6f47f83b714cd25c4b22e1145e8f613e7`. GenLayer finalized transaction hashes and validator votes are retained in the same artifact.
+Representative Base receipts include loan-0 escrow `0xb00dc0947a766a9425d3023b13ca755e5530940deafc018bc4bf51d4cda2012b`, breach relays `0x7c396aa9cee5ba0603e70167ffa71ea92853e0aac6e2d25603ef21c2682e13d8`, `0x63986934b7258c884e9b7dba35274bb677a243eaef93a5e739b09f2a87945f5d`, and `0x532cbb1e6e095ea4e6f2707d7be09d4dcd472b4f225210cfa5fe71cb0a93b11a`. GenLayer finalized hashes, the canceled/no-majority recovery, challenge readback, and validator votes are retained in the evidence artifacts.
 
 The acceptance runner is `tests/e2e/security_acceptance.py`; it uses no committed private keys and never writes keys to the evidence file.
 

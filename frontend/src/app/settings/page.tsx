@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Card, Mono } from "@/components/ui";
 import { useWallet } from "@/context/WalletContext";
-import { CONTRACT_ADDRESS, GENLAYER_NETWORK, BACKEND_URL, GENLAYER_EXPLORER_URL } from "@/lib/config";
+import { CONTRACT_ADDRESS, GENLAYER_NETWORK, BACKEND_URL, GENLAYER_EXPLORER_URL, BASE_ESCROW_ADDRESS, BASE_EXPLORER_URL } from "@/lib/config";
 import { healthz } from "@/lib/api";
 
 export default function SettingsPage() {
@@ -29,14 +29,26 @@ export default function SettingsPage() {
             <dd className="font-onchain text-on-surface">{GENLAYER_NETWORK}</dd>
           </div>
           <div className="flex justify-between gap-4">
-            <dt className="text-on-surface-variant">Contract address</dt>
+            <dt className="text-on-surface-variant">GenLayer contract</dt>
             <dd className="font-onchain break-all text-right text-on-surface">{CONTRACT_ADDRESS}</dd>
+          </div>
+          <div className="flex justify-between gap-4">
+            <dt className="text-on-surface-variant">Base Sepolia escrow</dt>
+            <dd className="font-onchain break-all text-right text-on-surface">{BASE_ESCROW_ADDRESS}</dd>
           </div>
           <div className="flex justify-between gap-4">
             <dt className="text-on-surface-variant">Explorer</dt>
             <dd>
               <a href={GENLAYER_EXPLORER_URL} target="_blank" rel="noreferrer" className="text-primary-container underline">
                 {GENLAYER_EXPLORER_URL}
+              </a>
+            </dd>
+          </div>
+          <div className="flex justify-between gap-4">
+            <dt className="text-on-surface-variant">Base explorer</dt>
+            <dd>
+              <a href={`${BASE_EXPLORER_URL}/address/${BASE_ESCROW_ADDRESS}`} target="_blank" rel="noreferrer" className="text-primary-container underline">
+                View escrow
               </a>
             </dd>
           </div>

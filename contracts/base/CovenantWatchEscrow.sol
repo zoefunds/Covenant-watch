@@ -71,6 +71,7 @@ contract CovenantWatchEscrow {
     event LoanCancelled(uint256 indexed loanId);
     event LoanTimedOut(uint256 indexed loanId, Status status);
     event RelayerUpdated(address indexed relayer);
+    event DecisionSignerUpdated(address indexed decisionSigner);
 
     modifier nonReentrant() { require(!locked, "reentrant"); locked = true; _; locked = false; }
     modifier onlyOwner() { require(msg.sender == owner, "not owner"); _; }
@@ -95,15 +96,31 @@ contract CovenantWatchEscrow {
         uint64 maturity,
         uint64 drawdownDeadline,
         uint32 settlementGrace,
-        bytes32[] calldata covenantCommitments
+        bytes32[] calldata covenantCommitments,
+        uint32[] calldata tier1StepBps,
+        uint32[] calldata tier2SeizureBps
     ) public pure returns (bytes32) {
+        require(tier1StepBps.length == covenantCommitments.length && tier2SeizureBps.length == covenantCommitments.length, "covenant arrays mismatch");
         bytes memory preimage = abi.encodePacked(
-            "COVENANT_WATCH_LOAN_V2", loanId, lender, borrower, principal,
+            "COVENANT_WATCH_LOAN_V3", loanId, lender, borrower, principal,
             collateral, interestBps, maturity, drawdownDeadline,
             settlementGrace, uint16(covenantCommitments.length)
         );
         for (uint256 i; i < covenantCommitments.length; ++i) {
             preimage = bytes.concat(preimage, covenantCommitments[i]);
+        }
+        preimage = bytes.concat(preimage, computePenaltyScheduleCommitment(tier1StepBps, tier2SeizureBps));
+        return sha256(preimage);
+    }
+
+    function computePenaltyScheduleCommitment(
+        uint32[] calldata tier1StepBps,
+        uint32[] calldata tier2SeizureBps
+    ) public pure returns (bytes32) {
+        require(tier1StepBps.length == tier2SeizureBps.length, "covenant arrays mismatch");
+        bytes memory preimage = abi.encodePacked("COVENANT_WATCH_PENALTY_SCHEDULE_V1", uint16(tier1StepBps.length));
+        for (uint256 i; i < tier1StepBps.length; ++i) {
+            preimage = bytes.concat(preimage, bytes4(tier1StepBps[i]), bytes4(tier2SeizureBps[i]));
         }
         return sha256(preimage);
     }
@@ -133,7 +150,8 @@ contract CovenantWatchEscrow {
         loanId = loanCount++;
         bytes32 commitment = computeLoanCommitment(
             loanId, msg.sender, borrower, principal, collateral, interestBps,
-            maturity, drawdownDeadline, settlementGrace, covenantCommitments
+            maturity, drawdownDeadline, settlementGrace, covenantCommitments,
+            tier1StepBps, tier2SeizureBps
         );
         require(commitment == expectedCommitment, "loan commitment mismatch");
 
@@ -299,7 +317,7 @@ contract CovenantWatchEscrow {
     }
 
     function setRelayer(address next) external onlyOwner { require(next != address(0), "zero relayer"); relayer = next; emit RelayerUpdated(next); }
-    function setDecisionSigner(address next) external onlyOwner { require(next != address(0), "zero signer"); decisionSigner = next; }
+    function setDecisionSigner(address next) external onlyOwner { require(next != address(0), "zero signer"); decisionSigner = next; emit DecisionSignerUpdated(next); }
     function transferOwnership(address next) external onlyOwner { require(next != address(0), "zero owner"); owner = next; }
 
     function _recover(bytes32 digest, bytes calldata signature) private pure returns (address) {

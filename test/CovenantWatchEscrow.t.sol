@@ -45,7 +45,7 @@ contract CovenantWatchEscrowTest {
         id = escrow.loanCount();
         uint64 maturity = uint64(block.timestamp + 30 days);
         uint64 drawdown = uint64(block.timestamp + 7 days);
-        loanCommitment = escrow.computeLoanCommitment(id, lender, borrower, 1_000 * U, 1_500 * U, 500, maturity, drawdown, 1 days, commits);
+        loanCommitment = escrow.computeLoanCommitment(id, lender, borrower, 1_000 * U, 1_500 * U, 500, maturity, drawdown, 1 days, commits, steps, seizures);
         vm.prank(lender);
         escrow.createLoan(borrower, 1_000 * U, 1_500 * U, 500, maturity, drawdown, 1 days, commits, steps, seizures, loanCommitment);
         vm.prank(borrower); escrow.stakeCollateral(id);
@@ -111,23 +111,63 @@ contract CovenantWatchEscrowTest {
         vm.expectRevert(); escrow.applyDecision(id, 7, 0, CovenantWatchEscrow.Decision.Compliant, loanCommitment, commits[0], deadline, signature);
     }
 
+    function testSignerRotationInvalidatesOldSignerAndAcceptsNewSigner() public {
+        (uint256 id, bytes32 loanCommitment, bytes32[] memory commits) = createAndStake(1);
+        uint256 deadline = block.timestamp + 1 hours;
+        bytes32 payload = keccak256(abi.encode(address(escrow), block.chainid, address(0x4444), id, 11, 0, CovenantWatchEscrow.Decision.Compliant, loanCommitment, commits[0], deadline));
+        bytes32 digest = keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", payload));
+        (uint8 oldV, bytes32 oldR, bytes32 oldS) = vm.sign(signerKey, digest);
+        uint256 nextKey = 0xB0B;
+        escrow.setDecisionSigner(vm.addr(nextKey));
+        vm.expectRevert();
+        escrow.applyDecision(id, 11, 0, CovenantWatchEscrow.Decision.Compliant, loanCommitment, commits[0], deadline, abi.encodePacked(oldR, oldS, oldV));
+        (uint8 newV, bytes32 newR, bytes32 newS) = vm.sign(nextKey, digest);
+        escrow.applyDecision(id, 11, 0, CovenantWatchEscrow.Decision.Compliant, loanCommitment, commits[0], deadline, abi.encodePacked(newR, newS, newV));
+    }
+
     function testExcessiveFrozenConsequencesRejectedAtOrigination() public {
         (bytes32[] memory commits, uint32[] memory steps, uint32[] memory seizures) = terms(1);
         uint64 maturity = uint64(block.timestamp + 30 days);
         uint64 drawdown = uint64(block.timestamp + 7 days);
-        bytes32 commitment = escrow.computeLoanCommitment(0, lender, borrower, 1_000 * U, 1_500 * U, 500, maturity, drawdown, 1 days, commits);
+        bytes32 commitment = escrow.computeLoanCommitment(0, lender, borrower, 1_000 * U, 1_500 * U, 500, maturity, drawdown, 1 days, commits, steps, seizures);
         steps[0] = 5001;
         vm.prank(lender); vm.expectRevert(); escrow.createLoan(borrower, 1_000 * U, 1_500 * U, 500, maturity, drawdown, 1 days, commits, steps, seizures, commitment);
         steps[0] = 200; seizures[0] = 8001;
         vm.prank(lender); vm.expectRevert(); escrow.createLoan(borrower, 1_000 * U, 1_500 * U, 500, maturity, drawdown, 1 days, commits, steps, seizures, commitment);
     }
 
+    function testWithinLimitPenaltyScheduleMismatchRejected() public {
+        (bytes32[] memory commits, uint32[] memory steps, uint32[] memory seizures) = terms(2);
+        uint64 maturity = uint64(block.timestamp + 30 days);
+        uint64 drawdown = uint64(block.timestamp + 7 days);
+        bytes32 accepted = escrow.computeLoanCommitment(0, lender, borrower, 1_000 * U, 1_500 * U, 500, maturity, drawdown, 1 days, commits, steps, seizures);
+        steps[1] = 201; // Still globally valid, but not the GenLayer-committed schedule.
+        vm.prank(lender); vm.expectRevert();
+        escrow.createLoan(borrower, 1_000 * U, 1_500 * U, 500, maturity, drawdown, 1 days, commits, steps, seizures, accepted);
+        steps[1] = 200; seizures[0] = 2499; // Same attack against seizure terms.
+        vm.prank(lender); vm.expectRevert();
+        escrow.createLoan(borrower, 1_000 * U, 1_500 * U, 500, maturity, drawdown, 1 days, commits, steps, seizures, accepted);
+    }
+
     function testLoanPairingMismatchRejected() public {
         (bytes32[] memory commits, uint32[] memory steps, uint32[] memory seizures) = terms(1);
         uint64 maturity = uint64(block.timestamp + 30 days);
         uint64 drawdown = uint64(block.timestamp + 7 days);
-        bytes32 wrong = escrow.computeLoanCommitment(99, lender, borrower, 1_000 * U, 1_500 * U, 500, maturity, drawdown, 1 days, commits);
+        bytes32 wrong = escrow.computeLoanCommitment(99, lender, borrower, 1_000 * U, 1_500 * U, 500, maturity, drawdown, 1 days, commits, steps, seizures);
         vm.prank(lender); vm.expectRevert(); escrow.createLoan(borrower, 1_000 * U, 1_500 * U, 500, maturity, drawdown, 1 days, commits, steps, seizures, wrong);
+    }
+
+    function testIncompleteOriginationCanBeCancelledAndRecovered() public {
+        (bytes32[] memory commits, uint32[] memory steps, uint32[] memory seizures) = terms(1);
+        uint64 maturity = uint64(block.timestamp + 30 days);
+        uint64 drawdown = uint64(block.timestamp + 7 days);
+        bytes32 commitment = escrow.computeLoanCommitment(0, lender, borrower, 1_000 * U, 1_500 * U, 500, maturity, drawdown, 1 days, commits, steps, seizures);
+        vm.prank(lender);
+        escrow.createLoan(borrower, 1_000 * U, 1_500 * U, 500, maturity, drawdown, 1 days, commits, steps, seizures, commitment);
+        assert(usdc.balanceOf(lender) == 9_000 * U);
+        vm.prank(lender); escrow.cancel(0);
+        vm.prank(lender); escrow.claimSettlement(0);
+        assert(usdc.balanceOf(lender) == 10_000 * U);
     }
 
     function testRelayFailureRecoveryWithoutDoubleApply() public {

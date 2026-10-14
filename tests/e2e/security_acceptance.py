@@ -68,12 +68,17 @@ def covenant_commitment(index: int, raw: dict) -> bytes:
 
 def loan_commitment(loan_id: int, lender: str, borrower: str, principal: int,
                     collateral: int, interest: int, maturity: int, drawdown: int,
-                    grace: int, covenant_commitments: list[bytes]) -> bytes:
-    preimage = b"COVENANT_WATCH_LOAN_V2" + pack_u(loan_id, 32)
+                    grace: int, covenant_commitments: list[bytes], covenants: list[dict]) -> bytes:
+    preimage = b"COVENANT_WATCH_LOAN_V3" + pack_u(loan_id, 32)
     preimage += bytes.fromhex(lender[2:]) + bytes.fromhex(borrower[2:])
     preimage += pack_u(principal, 32) + pack_u(collateral, 32) + pack_u(interest, 4)
     preimage += pack_u(maturity, 8) + pack_u(drawdown, 8) + pack_u(grace, 4)
     preimage += pack_u(len(covenant_commitments), 2) + b"".join(covenant_commitments)
+    schedule = b"COVENANT_WATCH_PENALTY_SCHEDULE_V1" + pack_u(len(covenants), 2)
+    for covenant in covenants:
+        schedule += pack_u(covenant["tier1_interest_step_up_bps"], 4)
+        schedule += pack_u(covenant["tier2_seizure_bps"], 4)
+    preimage += hashlib.sha256(schedule).digest()
     return hashlib.sha256(preimage).digest()
 
 
@@ -106,18 +111,31 @@ def gen_write(account: str, method: str, args: list[object]) -> dict:
             # contract normalizes those integers back to canonical bytes32;
             # quoting them would leave literal quote characters in tx hashes.
             rendered.append(str(value))
-    output = run("genlayer", "write", GENLAYER, method, "--args", *rendered)
-    hashes = re.findall(r"Write Transaction Hash:\s*(0x[0-9a-fA-F]{64})", output)
-    if not hashes:
-        raise RuntimeError(f"no transaction hash from {method}: {output[-1000:]}")
-    tx_hash = hashes[-1]
-    receipt = run("genlayer", "receipt", "--status", "FINALIZED", "--retries", "180", tx_hash)
-    if ("execution_result: 'SUCCESS'" not in receipt
-            and "execution_result: SUCCESS" not in receipt
-            and "result_name: 'MAJORITY_AGREE'" not in receipt):
+    canceled: list[str] = []
+    for attempt in range(3):
+        output = run("genlayer", "write", GENLAYER, method, "--args", *rendered)
+        hashes = re.findall(r"Write Transaction Hash:\s*(0x[0-9a-fA-F]{64})", output)
+        if not hashes:
+            raise RuntimeError(f"no transaction hash from {method}: {output[-1000:]}")
+        tx_hash = hashes[-1]
+        try:
+            receipt = run("genlayer", "receipt", "--status", "FINALIZED", "--retries", "180", tx_hash)
+            break
+        except subprocess.CalledProcessError:
+            accepted = run("genlayer", "receipt", "--status", "ACCEPTED", "--retries", "1", tx_hash)
+            if "status_name: 'CANCELED'" not in accepted or attempt == 2:
+                raise
+            canceled.append(tx_hash)
+    else:
+        raise RuntimeError(f"GenLayer {method} exhausted recovery attempts")
+    # The CLI may omit the leader_receipt label in compact output, but its
+    # successful contract return remains explicit. Consensus agreement alone
+    # is insufficient because validators can agree on a rollback.
+    if "status: 'return'" not in receipt or "status: 'rollback'" in receipt:
         raise RuntimeError(f"GenLayer {method} did not execute successfully: {receipt[-2000:]}")
     votes = re.findall(r"'?(0x[0-9a-fA-F]{40})'?: '?(agree|disagree)'?", receipt, re.I)
     return {"hash": tx_hash, "method": method, "successfulGenVm": True,
+            "recoveredCanceledTransactions": canceled,
             "validatorVotes": [{"validator": a, "vote": v.upper()} for a, v in votes]}
 
 
@@ -168,7 +186,7 @@ def main() -> None:
     def create_pair(name: str, covenants: list[dict], maturity: int, drawdown: int, grace: int) -> dict:
         loan_id = escrow.functions.loanCount().call()
         commits = [covenant_commitment(i, cov) for i, cov in enumerate(covenants)]
-        commitment = loan_commitment(loan_id, lender.address, borrower.address, U, 1_500_000, 500, maturity, drawdown, grace, commits)
+        commitment = loan_commitment(loan_id, lender.address, borrower.address, U, 1_500_000, 500, maturity, drawdown, grace, commits, covenants)
         txs = [base_send(lender, "approve principal", usdc.functions.approve(ESCROW_ADDRESS, U))]
         txs.append(base_send(lender, "escrow principal", escrow.functions.createLoan(
             borrower.address, U, 1_500_000, 500, maturity, drawdown, grace, commits,

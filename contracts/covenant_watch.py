@@ -428,8 +428,8 @@ def _covenant_commitment(index: int, cov: dict) -> str:
 def _loan_commitment(base_loan_id: int, lender: Address, borrower: Address,
                      principal: int, collateral: int, interest_bps: int,
                      maturity: int, drawdown_deadline: int, settlement_grace: int,
-                     covenant_commitments: list[str]) -> str:
-    preimage = b"COVENANT_WATCH_LOAN_V2"
+                     covenant_commitments: list[str], validated_covenants: list[dict]) -> str:
+    preimage = b"COVENANT_WATCH_LOAN_V3"
     preimage += _pack_u(base_loan_id, 32)
     preimage += bytes.fromhex(lender.as_hex[2:]) + bytes.fromhex(borrower.as_hex[2:])
     preimage += _pack_u(principal, 32) + _pack_u(collateral, 32)
@@ -438,6 +438,11 @@ def _loan_commitment(base_loan_id: int, lender: Address, borrower: Address,
     preimage += _pack_u(len(covenant_commitments), 2)
     for commitment in covenant_commitments:
         preimage += bytes.fromhex(commitment[2:])
+    schedule = b"COVENANT_WATCH_PENALTY_SCHEDULE_V1" + _pack_u(len(validated_covenants), 2)
+    for covenant in validated_covenants:
+        schedule += _pack_u(int(covenant["tier1_interest_step_up_bps"]), 4)
+        schedule += _pack_u(int(covenant["tier2_seizure_bps"]), 4)
+    preimage += hashlib.sha256(schedule).digest()
     return "0x" + hashlib.sha256(preimage).hexdigest()
 
 
@@ -1181,7 +1186,7 @@ Respond with ONLY a JSON object, no markdown, with exactly these keys:
         expected_commitment = _loan_commitment(
             base_loan_id, sender, borrower_addr, principal, collateral_wei,
             base_interest_bps, maturity_ts, drawdown_deadline_ts,
-            settlement_grace_seconds, covenant_commitments,
+            settlement_grace_seconds, covenant_commitments, validated,
         )
         supplied_commitment = (
             "0x" + format(loan_commitment, "064x")

@@ -177,11 +177,16 @@ def create_args(lender, borrower, covenants, base_loan_id=0, maturity=4_102_444_
         preimage += round(float(raw["threshold"]) * 1_000_000).to_bytes(32, "big", signed=True)
         preimage += _pack_u(raw["tier1_interest_step_up_bps"], 4) + _pack_u(raw["tier2_seizure_bps"], 4)
         commitments.append("0x" + hashlib.sha256(preimage).hexdigest())
-    preimage = b"COVENANT_WATCH_LOAN_V2" + _pack_u(base_loan_id, 32)
+    preimage = b"COVENANT_WATCH_LOAN_V3" + _pack_u(base_loan_id, 32)
     preimage += bytes.fromhex(lender_hex[2:]) + bytes.fromhex(borrower_hex[2:])
     preimage += _pack_u(1_000_000, 32) + _pack_u(2_000_000, 32) + _pack_u(500, 4)
     preimage += _pack_u(maturity, 8) + _pack_u(drawdown, 8) + _pack_u(grace, 4) + _pack_u(len(commitments), 2)
     for item in commitments: preimage += bytes.fromhex(item[2:])
+    schedule = b"COVENANT_WATCH_PENALTY_SCHEDULE_V1" + _pack_u(len(covenants), 2)
+    for covenant in covenants:
+        schedule += _pack_u(covenant["tier1_interest_step_up_bps"], 4)
+        schedule += _pack_u(covenant["tier2_seizure_bps"], 4)
+    preimage += hashlib.sha256(schedule).digest()
     commitment = "0x" + hashlib.sha256(preimage).hexdigest()
     return [base_loan_id, commitment, borrower_hex, 1_000_000, 2_000_000, 500, maturity, drawdown, grace, covenants_json(*covenants), challenge_window]
 

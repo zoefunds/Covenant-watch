@@ -9,20 +9,20 @@ This file records current state only. Retired addresses, old transaction demonst
 | Component | Current value |
 |---|---|
 | GenLayer network | StudioNet |
-| GenLayer adjudicator | `0x1b4BA5Fe8894648E4B90d80f2DA5d53880CcfD7b` |
-| GenLayer deployment transaction | `0x9698a8fa9f6db79cbcda2a0986243d4b60f0f993003049864bdccf7f0aa0634a` |
+| GenLayer adjudicator | `0x646Ca53B8CafC1e1242c67AC9059F1c53f7B2E4D` |
+| GenLayer deployment transaction | `0x2828a9f9836a985f46d2e655454d0ee373681f27bc2824a748552e4af339814e` |
 | Base network | Base Sepolia, chain ID `84532` |
-| Base escrow | `0xbF8F70Db480d003Dd6c5629c50b1f9Bf3Adc9E9b` |
-| Base deployment transaction | `0x1690edbcf6b5a519ac5c574235579e88a966185f3596251dffc33691b6e9df68` |
+| Base escrow | `0xcCebA6072A607fed1674547B68EF3Fb1b30F867e` |
+| Base deployment transaction | `0xf17e5d27d9451e50a16130e314840a71e2cbc79acb875b086f62f5d9bea45a29` |
 | Circle test USDC | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` |
 | Base relayer | `0x19E7E376E7C213B7E7e7e46cc70A5dD086DAff2A` |
 | Decision signer | `0x7401c129EDfc26E68FE19309fE461eb3Db1058Eb` |
 | Frontend | https://covenant-watch.vercel.app |
-| Vercel project / deployment | `covenant-watch` / `dpl_BG3fddp9AQWHYgTYFpESUZ8fJJ8J` |
+| Vercel project / deployment | `covenant-watch` / `dpl_JAxumXRuTiSeeMDKR36sedevdeFi` |
 | Backend | https://covenant-watch-api.fly.dev |
 | Fly app / region | `covenant-watch-api` / `iad` |
 
-The GenLayer deployment is finalized and successful with five agreeing validators. Both chain counters are three after the live acceptance run, and the backend `/loans` response contains three paired loans.
+The GenLayer deployment is finalized and successful with five agreeing validators. Both chain counters are two after the V3 acceptance run, and the backend `/loans` response contains both paired loans.
 
 ## Live architecture
 

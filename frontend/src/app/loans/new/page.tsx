@@ -245,7 +245,7 @@ export default function NewLoanPage() {
         if (orphan.lender.toLowerCase() !== signer.address.toLowerCase() || orphan.status !== 0 || orphan.principalEscrowed !== orphan.principal) {
           throw new Error(`Base and GenLayer loan counters differ at loan #${genLayerCount}. Its pending Base escrow belongs to another flow; no new funds were moved.`);
         }
-        const recoveryCommitment = loanCommitment({ baseLoanId: genLayerCount, lender: signer.address, borrower: orphan.borrower, principal: orphan.principal, collateral: orphan.collateralRequired, interestBps: orphan.baseInterestBps, maturity: orphan.maturity, drawdownDeadline: orphan.drawdownDeadline, settlementGrace: orphan.settlementGrace, covenantCommitments });
+        const recoveryCommitment = loanCommitment({ baseLoanId: genLayerCount, lender: signer.address, borrower: orphan.borrower, principal: orphan.principal, collateral: orphan.collateralRequired, interestBps: orphan.baseInterestBps, maturity: orphan.maturity, drawdownDeadline: orphan.drawdownDeadline, settlementGrace: orphan.settlementGrace, covenantCommitments, tier1StepBps: cleanCovenants.map((c) => c.tier1_interest_step_up_bps), tier2SeizureBps: cleanCovenants.map((c) => c.tier2_seizure_bps) });
         if (recoveryCommitment.toLowerCase() !== String(orphan.commitment).toLowerCase()) throw new Error(`Base loan #${genLayerCount} does not match these participants, terms, and covenant commitments; no new funds were moved.`);
         effectiveBorrower = orphan.borrower.toLowerCase();
         effectivePrincipal = (Number(orphan.principal) / 1e6).toString();
@@ -257,7 +257,7 @@ export default function NewLoanPage() {
         setFlowStep(`Recovered existing Base loan #${genLayerCount} (${effectivePrincipal} USDC already escrowed). No duplicate Base transaction will be sent.`);
       } else if (baseCount === genLayerCount) {
         // New origination: USDC approval, then createLoan/transferFrom.
-        const commitment = loanCommitment({ baseLoanId: baseCount, lender: signer.address, borrower: normalizedBorrower, principal: usdcToUnits(principalUsdc), collateral: usdcToUnits(collateralUsdc), interestBps, maturity: maturityTs, drawdownDeadline: drawdownDeadlineTs, settlementGrace, covenantCommitments });
+        const commitment = loanCommitment({ baseLoanId: baseCount, lender: signer.address, borrower: normalizedBorrower, principal: usdcToUnits(principalUsdc), collateral: usdcToUnits(collateralUsdc), interestBps, maturity: maturityTs, drawdownDeadline: drawdownDeadlineTs, settlementGrace, covenantCommitments, tier1StepBps: cleanCovenants.map((c) => c.tier1_interest_step_up_bps), tier2SeizureBps: cleanCovenants.map((c) => c.tier2_seizure_bps) });
         const created = await createBaseLoan(
           signer, normalizedBorrower, principalUsdc, collateralUsdc, interestBps, maturityTs, drawdownDeadlineTs, settlementGrace, covenantCommitments,
           cleanCovenants.map((c) => c.tier1_interest_step_up_bps), cleanCovenants.map((c) => c.tier2_seizure_bps), commitment,

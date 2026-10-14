@@ -1,11 +1,11 @@
 # Covenant Watch security review
 
-Last updated: 13 October 2026.
+Last updated: 14 October 2026.
 
 ## Current trust boundary
 
-- Base Sepolia contract `0xbF8F70Db480d003Dd6c5629c50b1f9Bf3Adc9E9b` is the sole authority for USDC custody, draw eligibility, repayment, breach consequences, maturity, and settlement.
-- GenLayer contract `0x1b4BA5Fe8894648E4B90d80f2DA5d53880CcfD7b` is the authority for covenant definitions, evidence evaluation, challenges, and finalized adjudication. It does not custody value.
+- Base Sepolia contract `0xcCebA6072A607fed1674547B68EF3Fb1b30F867e` is the sole authority for USDC custody, draw eligibility, repayment, breach consequences, maturity, and settlement.
+- GenLayer contract `0x646Ca53B8CafC1e1242c67AC9059F1c53f7B2E4D` is the authority for covenant definitions, evidence evaluation, challenges, and finalized adjudication. It does not custody value.
 - Browser wallets directly authorize loan creation, collateral staking, principal draw, repayment, and claims. The backend cannot initiate those user actions.
 - The backend holds separate Base relayer and decision-signer keys. Relayer authority is restricted to `applyDecision`, and the contract independently recovers the signer over a domain-bound, expiring payload before applying a decision. Neither credential can transfer arbitrary user USDC through lifecycle methods; both remain sensitive and should be rotated if exposed.
 - API cache data is eventually consistent and non-authoritative. Contract reads and contract-enforced preconditions remain the final safety boundary.
@@ -24,6 +24,7 @@ Last updated: 13 October 2026.
 ## Adjudication controls
 
 - Covenant sources and economic consequence parameters are fixed at creation.
+- The V3 loan commitment includes an ordered penalty-schedule hash. GenLayer derives it from validated covenant terms, while Base independently derives it from the Base penalty arrays. Any cross-chain penalty mismatch therefore changes the loan commitment and is rejected before principal escrow.
 - Off-chain covenants require multiple distinct HTTPS publisher hosts. Validators fetch sources independently and compare structured status, observed value, and source hash.
 - A strict publisher majority must corroborate the observed value within the configured tolerance. Missing, ambiguous, or disagreeing evidence yields `INCONCLUSIVE` instead of a penalty.
 - Challenge evidence is additive and cannot replace the original source set. Finalization is blocked until the challenge window closes.
@@ -46,20 +47,21 @@ Last updated: 13 October 2026.
 
 ## Current verification status
 
-- Remediation Base deployment transaction: `0x1690edbcf6b5a519ac5c574235579e88a966185f3596251dffc33691b6e9df68`.
-- Remediation GenLayer deployment transaction: `0x9698a8fa9f6db79cbcda2a0986243d4b60f0f993003049864bdccf7f0aa0634a`.
+- Remediation Base deployment transaction: `0xf17e5d27d9451e50a16130e314840a71e2cbc79acb875b086f62f5d9bea45a29`.
+- Remediation GenLayer deployment transaction: `0x2828a9f9836a985f46d2e655454d0ee373681f27bc2824a748552e4af339814e`.
 - GenLayer deployment: finalized, successful, five agreeing validators.
-- Acceptance counters: three paired loans on both chains.
-- Production API list after acceptance: three live indexed loans.
-- Local Foundry escrow suite: 3 passed, 0 failed.
-- Backend pytest suite: 17 passed, 0 failed.
+- Acceptance counters: two paired V3 loans on both chains.
+- Production API list after acceptance: two current indexed loans (`REPAID` and `DEFAULTED`).
+- Local Foundry escrow suite: 13 passed, 0 failed.
+- Backend/direct pytest suite: 30 passed, 0 failed.
 - Frontend ESLint, TypeScript checking, and Next.js production build: passed.
-- Live acceptance completed on the remediation pair using separate lender and borrower wallets. It covered Base approvals, principal escrow, collateral staking, finalized GenLayer checks, forged relay rejection and recovery, three-covenant breach progression, challenge evidence, default withdrawal, repayment/settlement, and undrawn maturity settlement. Evidence is checked in as `acceptance-evidence.json`.
+- Live V3 acceptance used separate lender and borrower wallets. Loan 0 covered approvals, principal escrow, collateral staking, finalized adjudication, forged-relay rejection, draw, repayment, and both withdrawals. Loan 1 covered a real canceled/no-majority GenLayer transaction, safe recovery without duplicate Base transfers, three stored challenge sources, three-covenant breach progression, terminal default, and lender withdrawal. Evidence is checked in as `acceptance-evidence.json`.
 
 ## Residual risks
 
 - Cross-chain state is coordinated operationally rather than by an atomic bridge. Recovery procedures and counter consistency are important.
-- The backend relayer and Base owner are privileged roles. Contract restrictions reduce relayer scope, but secure key storage and rotation remain necessary.
+- The backend currently operates both the relayer and decision-signer credentials. On-chain separation protects against compromise of only one credential, but compromise of the full backend secret environment can control both. This is not a trustless bridge; production should separate custody or use threshold/bridge verification.
+- Cross-chain recovery is explicit rather than atomic. Canceled GenLayer writes are retried only after terminal-state inspection; pending/unknown transactions are never blindly resubmitted. Operator monitoring is still required.
 - Publisher collusion and incorrect public information are external oracle risks. Multi-source consensus reduces but cannot eliminate them.
 - LLM extraction is probabilistic. Validator agreement and fail-closed `INCONCLUSIVE` handling reduce the chance that ambiguity becomes an economic penalty.
 - Testnet USDC and StudioNet are not production assets or production-final networks. A mainnet launch requires a new security review, deployment, monitoring, and acceptance test record.

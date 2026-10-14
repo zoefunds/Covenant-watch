@@ -33,12 +33,20 @@ export function loanCommitment(args: {
   baseLoanId: number; lender: string; borrower: string; principal: bigint;
   collateral: bigint; interestBps: number; maturity: number;
   drawdownDeadline: number; settlementGrace: number; covenantCommitments: Hex[];
+  tier1StepBps: number[]; tier2SeizureBps: number[];
 }): Hex {
+  if (args.tier1StepBps.length !== args.covenantCommitments.length || args.tier2SeizureBps.length !== args.covenantCommitments.length) {
+    throw new Error("Penalty schedule must match the covenant count.");
+  }
+  const penaltySchedule = sha256(concatHex([
+    stringToHex("COVENANT_WATCH_PENALTY_SCHEDULE_V1"), u(args.covenantCommitments.length, 2),
+    ...args.tier1StepBps.flatMap((step, index) => [u(step, 4), u(args.tier2SeizureBps[index], 4)]),
+  ]));
   return sha256(concatHex([
-    stringToHex("COVENANT_WATCH_LOAN_V2"), u(args.baseLoanId, 32),
+    stringToHex("COVENANT_WATCH_LOAN_V3"), u(args.baseLoanId, 32),
     args.lender as Hex, args.borrower as Hex, u(args.principal, 32), u(args.collateral, 32),
     u(args.interestBps, 4), u(args.maturity, 8), u(args.drawdownDeadline, 8),
     u(args.settlementGrace, 4), u(args.covenantCommitments.length, 2),
-    ...args.covenantCommitments,
+    ...args.covenantCommitments, penaltySchedule,
   ]));
 }
